@@ -12,6 +12,12 @@ const strings = {
     giftFailed: 'Gift not sent', noComments: 'Be the first to comment', swipeHint: 'Swipe up for more', chats: 'Messages',
     noChats: 'No conversations yet', encrypted: 'Encrypted message', cameraNeeded: 'Camera and microphone are needed to go LIVE',
     liveUnavailable: 'LIVE service is unavailable right now', soon: 'Coming soon to the new MilkyWay', follow: 'Follow',
+    profile: 'Profile', posts: 'posts', followers: 'followers', followingCount: 'following', editProfile: 'Edit profile',
+    noPostsYet: 'You have not posted yet', privateAccount: 'Private account', displayName: 'Name', username: 'Username', bio: 'Bio',
+    usernameRule: 'Username: 2–30 letters, numbers, dots or underscores', cancel: 'Cancel', newPost: 'New post',
+    captionPlaceholder: 'Say something about your post…', publish: 'Publish', chooseMedia: 'Choose photo or video', remove: 'Remove',
+    mediaType: 'Only photos and videos can be posted', videoTooBig: 'Video must be under 100 MB', imageTooBig: 'Photo must be under 10 MB',
+    writeOrPick: 'Write something or choose a photo/video', uploading: 'Uploading…', published: 'Posted',
   },
   sw: {
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
@@ -25,6 +31,12 @@ const strings = {
     giftFailed: 'Zawadi haikutumwa', noComments: 'Kuwa wa kwanza kutoa maoni', swipeHint: 'Telezesha juu kwa zaidi', chats: 'Ujumbe',
     noChats: 'Bado hakuna mazungumzo', encrypted: 'Ujumbe uliosimbwa', cameraNeeded: 'Kamera na maikrofoni zinahitajika kuanza LIVE',
     liveUnavailable: 'Huduma ya LIVE haipatikani sasa', soon: 'Inakuja hivi karibuni kwenye MilkyWay mpya', follow: 'Fuata',
+    profile: 'Wasifu', posts: 'posts', followers: 'wafuasi', followingCount: 'unaowafuata', editProfile: 'Hariri wasifu',
+    noPostsYet: 'Hujaposti bado', privateAccount: 'Akaunti binafsi', displayName: 'Jina', username: 'Jina la mtumiaji', bio: 'Maelezo',
+    usernameRule: 'Jina la mtumiaji: herufi 2–30, namba, nukta au _', cancel: 'Ghairi', newPost: 'Post mpya',
+    captionPlaceholder: 'Sema kitu kuhusu post yako…', publish: 'Chapisha', chooseMedia: 'Chagua picha au video', remove: 'Ondoa',
+    mediaType: 'Picha na video pekee zinaruhusiwa', videoTooBig: 'Video iwe chini ya 100 MB', imageTooBig: 'Picha iwe chini ya 10 MB',
+    writeOrPick: 'Andika ujumbe au chagua picha/video', uploading: 'Inapakia…', published: 'Imechapishwa',
   },
 };
 const language = (() => { try { return localStorage.getItem('mw_lang') || (navigator.language || 'en').slice(0, 2); } catch { return 'en'; } })();

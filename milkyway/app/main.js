@@ -27,6 +27,8 @@ const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSh
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
 const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray()));
 const inboxView = lazy(() => import('./ui/inbox-view.js').then(m => new m.InboxView()));
+const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({ requireLogin, openCreate })));
+const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet()));
 const liveView = lazy(() => import('./ui/live-view.js').then(m => new m.LiveView($('liveView'), {
   requireLogin, openProfile, onClose: () => showHome(),
   openGifts: target => giftTray().then(tray => tray.open(target)),
@@ -37,7 +39,14 @@ function requireLogin() {
   authSheet().then(sheet => sheet.open());
   return false;
 }
-const openProfile = () => soon();
+// Any author (feed / Lives) or, with no argument, the signed-in user's own profile.
+function openProfile(person = null) {
+  if (!person?.id && !requireLogin()) return;
+  profileView().then(view => view.open(person?.id ? person : null));
+}
+function openCreate() {
+  if (requireLogin()) composeSheet().then(sheet => sheet.open());
+}
 
 // ---- Feed ---------------------------------------------------------------------------------------------------
 const feedView = new FeedView($('feedView'), {
@@ -94,9 +103,9 @@ document.addEventListener('click', event => {
   const nav = target.dataset.nav;
   if (nav === 'home') { if (shell.dataset.view === 'home') feedView.reload(); else showHome(); }
   else if (nav === 'live') showLive();
-  else if (nav === 'create') { if (requireLogin()) soon(); }
+  else if (nav === 'create') openCreate();
   else if (nav === 'inbox') { if (requireLogin()) inboxView().then(view => view.open()); }
-  else if (nav === 'me') { if (requireLogin()) soon(); }
+  else if (nav === 'me') openProfile();
 });
 
 // ---- Connectivity + account changes ----------------------------------------------------------------------
