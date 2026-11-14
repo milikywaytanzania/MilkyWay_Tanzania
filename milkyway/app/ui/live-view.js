@@ -11,7 +11,7 @@ import { catalog, giftIcon } from '../data/gifts.js';
 import { VerticalPager } from './pager.js';
 import { LiveSession } from './live-session.js';
 import { Sheet } from './sheet.js';
-import { h, icon, count, toast, paintAvatar } from './dom.js';
+import { h, icon, count, toast, paintAvatar, brandMark } from './dom.js';
 
 const JOIN_DELAY = 200;
 const MAX_COMMENTS = 40;
@@ -43,7 +43,7 @@ function liveChrome({ host = false } = {}) {
   const top = h('div', { class: 'live-top' },
     h('div', { class: 'live-host', 'data-act': 'profile' }, avatarNode, h('div', {}, name, h('small', { class: 'live-tag' }, t('live'))), host ? null : follow),
     viewers, close);
-  const node = h('section', { class: 'slide live-slide' }, cover, stage, guests, h('div', { class: 'shade' }), top, comments, hearts, banner, state, bar);
+  const node = h('section', { class: 'slide live-slide' }, cover, stage, guests, brandMark('live'), h('div', { class: 'shade' }), top, comments, hearts, banner, state, bar);
   node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), cover, stage, guests, comments, hearts, banner, state, input, form };
   return node;
 }

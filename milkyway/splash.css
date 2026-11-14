@@ -1,0 +1,36 @@
+/* MilkyWay startup splash — the official "FREEDOM. TRUTH. LIGHT." galaxy artwork, shown while the app opens.
+   Painted from static HTML before any script runs; splash.js fades it out once the app is ready. */
+.mw-splash {
+  position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; overflow: hidden;
+  background: #040a26; color: #fff; pointer-events: auto;
+  transition: opacity .55s cubic-bezier(.2, .85, .25, 1), visibility 0s linear .55s;
+}
+/* Blurred copy fills any space the artwork does not cover on wide screens. */
+.mw-splash::before {
+  content: ""; position: absolute; inset: -40px; background: url("brand/milkyway-splash.webp") center / cover no-repeat;
+  filter: blur(28px) brightness(.7); transform: scale(1.1);
+}
+.mw-splash-art {
+  position: relative; display: block; width: 100%; height: 100%; object-fit: contain;
+  animation: mwSplashIn 1.1s cubic-bezier(.2, .85, .25, 1) both;
+}
+/* Phones in portrait: the vertical artwork fills the screen edge to edge. */
+@media (max-aspect-ratio: 3/4) { .mw-splash-art { object-fit: cover; } }
+.mw-splash-progress {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 7vh); width: min(42vw, 180px); height: 2px;
+  transform: translateX(-50%); border-radius: 2px; overflow: hidden; background: rgba(120, 170, 255, .18);
+}
+.mw-splash-progress::after {
+  content: ""; position: absolute; inset: 0; width: 40%; border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #7cc4ff, #ffd88a, transparent);
+  animation: mwSplashLoad 1.4s ease-in-out infinite;
+}
+.mw-splash.is-done { opacity: 0; visibility: hidden; pointer-events: none; }
+.mw-splash.is-done .mw-splash-art { transform: scale(1.04); transition: transform .55s ease; }
+html[data-splash-seen] .mw-splash { display: none; }
+@keyframes mwSplashIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+@keyframes mwSplashLoad { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) {
+  .mw-splash-art, .mw-splash-progress::after { animation: none; }
+  .mw-splash, .mw-splash.is-done .mw-splash-art { transition-duration: .01s; }
+}

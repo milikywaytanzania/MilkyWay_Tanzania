@@ -445,7 +445,7 @@ input:focus,textarea:focus,select:focus{outline:none!important;border-color:var(
 .mw-video-fullscreen[hidden]{display:none}
 .mw-media-frame:fullscreen{width:100vw;height:100dvh;margin:0!important;border-radius:0;background:#000}
 .mw-media-frame:fullscreen>.post-media{width:100%;height:100%;max-height:100dvh;object-fit:contain}
-.mw-watermark{position:absolute;right:clamp(8px,2.4%,16px);bottom:clamp(8px,2.4%,16px);width:clamp(46px,15%,104px);height:auto;opacity:.82;pointer-events:none;user-select:none;filter:drop-shadow(0 1px 3px rgba(0,20,60,.6));z-index:1}
+.mw-watermark{position:absolute;right:clamp(8px,2.4%,16px);bottom:clamp(8px,2.4%,16px);width:clamp(46px,15%,104px);height:auto;opacity:.6;pointer-events:none;user-select:none;filter:drop-shadow(0 1px 3px rgba(0,20,60,.6));z-index:1}
 .mw-media-frame[data-kind="video"]>.mw-watermark{bottom:clamp(46px,9%,64px)}
 
 /* DM: envelope, bubbles and composer */

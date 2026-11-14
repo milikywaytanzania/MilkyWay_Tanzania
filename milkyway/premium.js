@@ -594,14 +594,13 @@
   document.addEventListener('click', event => { document.querySelectorAll('.mw-message-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.open = false; }); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') document.querySelectorAll('.mw-message-menu[open]').forEach(menu => { menu.open = false; }); });
   document.addEventListener('play', event => { if (event.target instanceof HTMLVideoElement && !event.target.closest('#mwLivePage,.mw-call-panel')) document.querySelectorAll('.post video,.mw-ad-slot video').forEach(video => { if (video !== event.target) video.pause(); }); }, true);
-  // Posts published from this release onward are branded automatically; older posts can opt in from the author's post menu.
-  const watermarkSince = Date.parse('2026-10-11T00:00:00Z');
-  const watermarkSource = 'brand/milkyway-watermark.png';
+  // Every image and video post carries the universal MilkyWay watermark (a display overlay; the original upload is untouched).
+  const watermarkSource = 'brand/milkyway-watermark-galaxy.webp';
   const brandedPosts = new Set();
   const checkedPosts = new Set();
   let brandingRequest = null;
   const eligibleMedia = post => post.querySelector(':scope>.post-media,:scope>.mw-media-frame>.post-media');
-  const autoBranded = post => Date.parse(post.dataset.createdAt || '') >= watermarkSince;
+  const autoBranded = () => true;
   function paintWatermark(post) {
     const media = eligibleMedia(post);
     if (!media) return;
@@ -660,7 +659,7 @@
       const canvas = document.createElement('canvas');canvas.width = photo.naturalWidth;canvas.height = photo.naturalHeight;
       const context = canvas.getContext('2d');context.drawImage(photo, 0, 0);
       const width = Math.max(48, Math.min(canvas.width, canvas.height) * .22), height = width * mark.naturalHeight / mark.naturalWidth, pad = Math.min(canvas.width, canvas.height) * .035;
-      context.globalAlpha = .85;context.shadowColor = 'rgba(0,20,60,.5)';context.shadowBlur = width * .05;context.drawImage(mark, canvas.width - width - pad, canvas.height - height - pad, width, height);
+      context.globalAlpha = .7;context.shadowColor = 'rgba(0,20,60,.5)';context.shadowBlur = width * .05;context.drawImage(mark, canvas.width - width - pad, canvas.height - height - pad, width, height);
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .92));
       if (!blob) throw new Error(translate('exportFailed'));
       const link = document.createElement('a');link.href = URL.createObjectURL(blob);link.download = `milkyway-${post.dataset.postId}.jpg`;document.body.append(link);link.click();link.remove();setTimeout(() => URL.revokeObjectURL(link.href), 4000);

@@ -5,6 +5,7 @@
 <meta name="theme-color" content="#f3f9ff"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="description" content="MilkyWay — Freedom. Truth. Light. A social platform by Masiyatunda.">
 <title>MilkyWay — Freedom · Truth · Light</title>
+<link rel="stylesheet" href="splash.css?v=1"><link rel="preload" as="image" href="brand/milkyway-splash.webp" fetchpriority="high"><script>try{if(sessionStorage.getItem("mw_splash_seen"))document.documentElement.setAttribute("data-splash-seen","")}catch(e){}</script>
 <link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><link rel="icon" href="favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="32x32" href="brand/favicon-32.png"><link rel="icon" type="image/png" sizes="16x16" href="brand/favicon-16.png">
 <link rel="preconnect" href="https://masiyatunda-milkyway-live-mgh6b1np.livekit.cloud" crossorigin>
 <link rel="preconnect" href="https://wpclkhgizbvxuvbhbwzs.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net"><link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
@@ -226,12 +227,13 @@ nav.orbit .orbit-inner > #composeBtn{flex:1 1 0!important;width:auto!important;m
 }
 </style>
 
-<link rel="stylesheet" href="mw-bundle-theme-final.css?v=1">
+<link rel="stylesheet" href="mw-bundle-theme-final.css?v=1"><link rel="stylesheet" href="mw-watermark.css?v=1">
 
 
 
 </head>
-<body><div class="stars"></div><div class="app">
+<body><div id="mwSplash" class="mw-splash" role="img" aria-label="MilkyWay — Freedom. Truth. Light."><img class="mw-splash-art" src="brand/milkyway-splash.webp" alt="" decoding="sync" fetchpriority="high"><span class="mw-splash-progress" aria-hidden="true"></span></div><script src="splash.js?v=1"></script>
+<div class="stars"></div><div class="app">
 <header class="top"><div class="brand"><img src="brand/milkyway-emblem-96.png" width="40" height="40" alt="MilkyWay" decoding="async" fetchpriority="high"><div><h1>MilkyWay</h1><small>FREEDOM · TRUTH · LIGHT</small><a class="mw-apk-link" id="mwApkLink" href="download/MilkyWay.apk?v=7" download="MilkyWay.apk" type="application/vnd.android.package-archive" data-mw-i18n-aria="downloadAndroidApp" aria-label="Download the MilkyWay Android app"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v8.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-4.5 4.5a1 1 0 0 1-1.4 0l-4.5-4.5a1 1 0 1 1 1.4-1.4l2.8 2.8V4a1 1 0 0 1 1-1zM5 18a1 1 0 0 1 1 1v.5h12V19a1 1 0 1 1 2 0v1.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V19a1 1 0 0 1 1-1z"/></svg><span data-mw-i18n="getAndroidApp">Pakua App</span></a></div></div><div class="top-actions"><button class="btn ghost" id="topMenuBtn" type="button" aria-label="Menyu" title="Menyu" style="padding:8px 10px;font-size:1.2rem">☰</button><button class="btn ghost" id="topSearchBtn" type="button" aria-label="Tafuta" title="Tafuta" style="padding:8px 10px">🔍</button><button class="btn ghost" id="topNotifyBtn" type="button" aria-label="Arifa" title="Arifa" style="padding:8px 12px;font-size:1.1rem">🔔<span id="topNotifyBadge" class="badge" style="display:none;margin-left:4px">0</span></button><select id="langSel" title="Lugha"><option value="sw">SW</option><option value="en">EN</option></select><button class="btn primary" id="accountTopBtn" title="MilkyWay Galaxy" aria-label="MilkyWay Galaxy" style="padding:8px 10px;font-size:.72rem;white-space:nowrap;display:inline-flex;align-items:center;gap:6px" data-i18n="login">MilkyWay Galaxy</button></div></header><div class="install" id="installBar" style="display:none">
   <span id="installText">Pakua MilkyWay kwenye skrini yako</span>
   <button id="installBtn" type="button">Pakua App</button>
@@ -1779,7 +1781,7 @@ if(AUTH_LINK_ERROR){history.replaceState(null,'',location.pathname+location.sear
 <script src="live-room.js?v=13"></script><script src="live-in-feed.js"></script>
 <script src="ui-language.js"></script>
 <script src="locale-loader.js?v=1"></script><script src="translations.js"></script><script src="live-globe.js"></script>
-<script src="premium.js"></script>
+<script src="premium.js?v=2"></script><script src="mw-watermark.js?v=1"></script>
 <script src="language-dropdown.js"></script>
 <script src="gallery.js"></script>
 <script src="live-broadcast.js"></script>

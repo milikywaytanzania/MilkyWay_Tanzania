@@ -12,7 +12,7 @@ import { feed, actions } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
 import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
-import { h, icon, count, toast, paintAvatar } from './dom.js';
+import { h, icon, count, toast, paintAvatar, brandMark } from './dom.js';
 
 const DOUBLE_TAP_MS = 260;
 
@@ -111,7 +111,7 @@ export class FeedView {
     const caption = h('p', { class: 'meta-caption', 'data-act': 'caption' });
     const bar = h('i');
     const slide = h('section', { class: 'slide', 'aria-roledescription': 'slide' },
-      media, h('div', { class: 'shade', 'aria-hidden': 'true' }),
+      media, brandMark(), h('div', { class: 'shade', 'aria-hidden': 'true' }),
       h('aside', { class: 'rail' }, h('div', { class: 'rail-author', 'data-act': 'profile' }, avatarNode, follow), like, comment, save, gift, share),
       h('div', { class: 'meta' }, name, caption),
       h('div', { class: 'progress', 'aria-hidden': 'true' }, bar));

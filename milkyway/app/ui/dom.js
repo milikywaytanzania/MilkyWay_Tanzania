@@ -19,6 +19,11 @@ export function h(tag, attrs = {}, ...children) {
   return node;
 }
 
+/** Universal MilkyWay watermark: a semi-transparent brand mark laid over posts, videos, audio and LIVE views.
+ *  It is a display overlay only; uploaded originals are never modified. */
+export const BRAND_MARK_SRC = new URL('../../brand/milkyway-watermark-galaxy.webp', import.meta.url).href;
+export const brandMark = (variant = 'post') => h('img', { class: `mw-mark mw-mark--${variant}`, src: BRAND_MARK_SRC, alt: '', 'aria-hidden': 'true', draggable: 'false', decoding: 'async', loading: 'eager' });
+
 const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
 export const icon = {
   heart: svg('<path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2.3 4 6.4 4c2.3 0 3.9 1.3 5.6 3.3C13.7 5.3 15.3 4 17.6 4 21.7 4 23.6 8.4 22 11.7 19.5 16.4 12 21 12 21z"/>'),
