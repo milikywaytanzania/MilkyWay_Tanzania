@@ -256,7 +256,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .gift-item small { font-size: 11px; text-align: center; line-height: 1.15; }
 .gift-item em { font-style: normal; font-size: 11px; color: #ffc93c; }
 .chat-list { display: grid; }
-.chat-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; text-decoration: none; border-bottom: 1px solid var(--line); }
+.chat-row { width: 100%; text-align: left; display: flex; align-items: center; gap: 12px; padding: 10px 2px; text-decoration: none; border-bottom: 1px solid var(--line); }
 .chat-text { flex: 1; min-width: 0; display: grid; }
 .chat-text span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
 .chat-row.unread b::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--accent); }

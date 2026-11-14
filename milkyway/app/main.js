@@ -14,10 +14,9 @@ import { playback } from './ui/playback.js';
 import { toast } from './ui/dom.js';
 import { profiles } from './data/profiles.js';
 
-// Post links (?post=…) and call / conversation-room links open in the full app (messenger + calls live there).
-const params = new URLSearchParams(location.search);
-const classicOnly = hash => /^#(call=|live=mw-conversation-)/.test(hash);
-if (params.get('post') || params.get('do') || classicOnly(location.hash)) location.replace(`${config.classicUrl}${location.search}${location.hash}`);
+// Call and conversation-room links belong to screens that are not in this shell yet.
+const comingSoon = hash => /^#(call=|live=mw-conversation-)/.test(hash);
+const soon = () => toast(t('soon'));
 
 const $ = id => document.getElementById(id);
 const shell = document.documentElement;
@@ -38,7 +37,7 @@ function requireLogin() {
   authSheet().then(sheet => sheet.open());
   return false;
 }
-const openProfile = author => { location.href = `${config.classicUrl}#user=${encodeURIComponent(author.id)}`; };
+const openProfile = () => soon();
 
 // ---- Feed ---------------------------------------------------------------------------------------------------
 const feedView = new FeedView($('feedView'), {
@@ -79,6 +78,7 @@ function showLive(room = null) {
 }
 
 function route() {
+  if (comingSoon(location.hash)) { history.replaceState(null, '', location.pathname + location.search); soon(); }
   const hash = decodeURIComponent(location.hash.slice(1));
   if (hash.startsWith('live')) showLive(hash.split('=')[1] || null);
   else if (shell.dataset.view === 'live') showHome();
@@ -94,9 +94,9 @@ document.addEventListener('click', event => {
   const nav = target.dataset.nav;
   if (nav === 'home') { if (shell.dataset.view === 'home') feedView.reload(); else showHome(); }
   else if (nav === 'live') showLive();
-  else if (nav === 'create') { if (requireLogin()) location.href = `${config.classicUrl}#compose`; }
+  else if (nav === 'create') { if (requireLogin()) soon(); }
   else if (nav === 'inbox') { if (requireLogin()) inboxView().then(view => view.open()); }
-  else if (nav === 'me') { if (requireLogin()) location.href = `${config.classicUrl}#profile`; }
+  else if (nav === 'me') { if (requireLogin()) soon(); }
 });
 
 // ---- Connectivity + account changes ----------------------------------------------------------------------
@@ -127,13 +127,13 @@ idle(() => {
   });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
-    // Notification taps forwarded by the worker: Lives open here, calls in the full app.
+    // Notification taps forwarded by the worker: Lives open here; calls are not in this shell yet.
     navigator.serviceWorker.addEventListener('message', ({ data }) => {
       if (data?.type === 'mw-open-live' && data.url) {
         const hash = new URL(data.url).hash;
-        if (classicOnly(hash)) location.href = `${config.classicUrl}${hash}`;
+        if (comingSoon(hash)) soon();
         else { history.pushState(null, '', hash); route(); }
-      } else if (data?.type === 'mw-call-push' || data?.type === 'mw-call-action') location.href = `${config.classicUrl}#call=${encodeURIComponent(data.id || '')}${data.action ? `&do=${encodeURIComponent(data.action)}` : ''}`;
+      } else if (data?.type === 'mw-call-push' || data?.type === 'mw-call-action') soon();
     });
   }
 }, 2500);

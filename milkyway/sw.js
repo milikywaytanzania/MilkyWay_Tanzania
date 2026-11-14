@@ -1,8 +1,7 @@
 // MilkyWay service worker.
 // Precaches the new app shell (index.html + app/ modules) so startup never waits for the network; the feed itself
-// comes from IndexedDB (app/core/store.js). The classic app's files (classic.html and its scripts) are cached on
-// first use by the shared stale-while-revalidate asset rule instead of being downloaded at install time.
-const CACHE='milkyway-v202-splash';
+// comes from IndexedDB (app/core/store.js). Other assets are cached on first use by the shared stale-while-revalidate rule.
+const CACHE='milkyway-v203-clean';
 const SHELL=['./','./index.html','./manifest.json','./favicon.ico','./icon-192.png','./icon-512.png','./brand/favicon-32.png','./splash.css?v=1','./splash.js?v=1','./brand/milkyway-splash.webp','./brand/milkyway-watermark-galaxy.webp',
   './app/app.css?v=3','./app/main.js','./app/config.js',
   './app/core/events.js','./app/core/sdk.js','./app/core/net.js','./app/core/store.js','./app/core/sync.js','./app/core/device.js','./app/core/media.js','./app/core/i18n.js',
@@ -24,7 +23,7 @@ self.addEventListener('sync', event => {
   if (event.tag !== 'mw-reconnect') return;
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => clients.forEach(client => client.postMessage({ type: 'mw-reconnect' }))));
 });
-// Feed videos saved on the device (prefetched by media-prefetch.js, or kept under "Offline videos") play from there,
+// Feed videos saved on the device (in the "mw-feed-videos" or "Offline videos" caches) play from there,
 // online or not. Players ask for byte ranges, so each answer is cut from the saved file and seeking works offline too.
 // Videos that are not saved go straight to the network as before.
 const VIDEO_CACHES=['mw-feed-videos','mw-offline-videos'];

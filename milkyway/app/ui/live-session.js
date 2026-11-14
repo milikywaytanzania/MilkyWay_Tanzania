@@ -7,7 +7,7 @@
 // History: comments are persisted through /api/milkyway-live-room so late joiners see the recent conversation.
 // Viewers: counted from LiveKit participants (authoritative), Realtime presence when LiveKit is not connected.
 //
-// Interoperates with the classic Live room: understands its {type:'lv-heart'} / {type:'lv-sync'} signals and sends them.
+// Live room signals: understands {type:'lv-heart'} / {type:'lv-sync'} signals and sends them.
 import { config } from '../config.js';
 import { api, auth, supabase, isNetworkError, accessToken } from '../core/net.js';
 import { loadLiveKit } from '../core/sdk.js';

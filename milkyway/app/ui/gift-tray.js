@@ -1,6 +1,5 @@
 // Gift tray: catalog and balance come from the device cache instantly, then refresh. Works for posts and Lives.
 import { t } from '../core/i18n.js';
-import { config } from '../config.js';
 import { catalog, wallet, sendGift } from '../data/gifts.js';
 import { Sheet } from './sheet.js';
 import { h, toast } from './dom.js';
@@ -11,7 +10,7 @@ export class GiftTray {
     this.balance = h('b', {}, '–');
     this.grid = h('div', { class: 'gift-grid' });
     this.sheet.body.append(
-      h('div', { class: 'gift-head' }, h('span', {}, '🪙 ', this.balance, ' ', t('coins')), h('a', { class: 'pill-btn', href: `${config.classicUrl}#wallet` }, t('topUp'))),
+      h('div', { class: 'gift-head' }, h('span', {}, '🪙 ', this.balance, ' ', t('coins')), h('button', { class: 'pill-btn', type: 'button', onclick: () => toast(t('soon')) }, t('topUp'))),
       this.grid);
     catalog.subscribe(items => this.#render(items));
     wallet.subscribe(value => { this.balance.textContent = String(value?.coins ?? '–'); });

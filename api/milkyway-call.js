@@ -33,7 +33,7 @@ async function access(ctx, call, name) {
 
 const cleanName = value => typeof value === 'string' ? value.trim().slice(0, 80) : '';
 
-// Best-effort realtime nudge to the other person's open app (dm-calls.js listens on mw-calls-<user id>).
+// Best-effort realtime nudge to the other person's open app (apps listen on mw-calls-<user id>).
 // The signal only names the call; the client re-reads it from this API, and 1-second polling remains the fallback.
 async function nudge(ctx, userId, id, kind) {
   try {

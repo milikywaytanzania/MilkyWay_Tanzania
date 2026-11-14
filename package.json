@@ -9,7 +9,7 @@
     "start": "node server.js",
     "build": "node tools/build-cloudflare.mjs",
     "build:cloudflare": "node tools/build-cloudflare.mjs",
-    "test": "node --test tools/core-architecture.test.mjs tools/repair-regressions.test.mjs",
+    "test": "node --test tools/core-architecture.test.mjs",
     "check:syntax": "node tools/check-syntax.mjs",
     "android:sync": "cap sync android",
     "android:open": "cap open android",

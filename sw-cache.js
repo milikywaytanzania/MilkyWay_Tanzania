@@ -4,8 +4,7 @@
 // When a page arrives from the network with new content (a new deploy), its scripts and styles are fetched
 // fresh for a short window so a new page never runs with old code.
 // Never cached here: non-GET requests, signed-in API calls, functions, uploads, video ranges and app downloads.
-// (Feed videos prefetched by milkyway/media-prefetch.js are played from the device by the MilkyWay worker.)
-// (MilkyWay's feed, profile and count reads are saved per account in IndexedDB by milkyway/offline-data.js.)
+// (Saved feed videos are played from the device by the MilkyWay worker; the feed itself lives in IndexedDB.)
 (() => {
   const PAGE_TIMEOUT = 3500;
   const IMAGE_LIMIT = 400;

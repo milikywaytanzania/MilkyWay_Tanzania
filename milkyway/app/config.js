@@ -48,8 +48,6 @@ const defaults = {
     // Posts kept per feed in IndexedDB for instant, offline startup.
     cacheLimit: 60,
   },
-  // Screens not yet rebuilt in the new shell open in the full app.
-  classicUrl: './classic.html',
 };
 
 const isObject = value => value && typeof value === 'object' && !Array.isArray(value);

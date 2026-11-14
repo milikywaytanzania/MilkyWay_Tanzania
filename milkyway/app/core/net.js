@@ -1,6 +1,6 @@
 // Network + session layer.
 //  - The signed-in session is read synchronously from localStorage at startup (same key supabase-js uses, so the
-//    classic app and this shell share one login). No network call is needed to know who the user is.
+//    site pages and this shell share one login). No network call is needed to know who the user is.
 //  - supabase-js is only loaded when idle or when a token must be refreshed / realtime is needed.
 //  - api() and rest() are thin fetch wrappers with timeouts, auth, one retry after a token refresh,
 //    and online/offline tracking that the sync engine listens to.
@@ -53,7 +53,7 @@ export function supabase() {
   return clientPromise;
 }
 
-// Other tabs (or the classic app) signing in/out.
+// Other tabs signing in/out.
 addEventListener('storage', event => {
   if (event.key !== SESSION_KEY) return;
   const before = session?.user?.id || null;

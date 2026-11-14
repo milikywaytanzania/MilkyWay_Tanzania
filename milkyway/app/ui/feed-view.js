@@ -259,4 +259,3 @@ export class FeedView {
   }
 }
 
-export const classicLink = hash => `${config.classicUrl}#${hash}`;

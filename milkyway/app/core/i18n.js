@@ -1,4 +1,4 @@
-// Minimal UI strings for the new shell. Follows the language chosen in the classic app (localStorage "mw_lang").
+// Minimal UI strings for the MilkyWay shell. Follows the saved language choice (localStorage "mw_lang").
 const strings = {
   en: {
     forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Lives',
@@ -11,7 +11,7 @@ const strings = {
     liveEnded: 'This LIVE has ended', sayHi: 'Say something…', coins: 'coins', topUp: 'Top up', sent: 'sent', queued: 'Will send when online',
     giftFailed: 'Gift not sent', noComments: 'Be the first to comment', swipeHint: 'Swipe up for more', chats: 'Messages',
     noChats: 'No conversations yet', encrypted: 'Encrypted message', cameraNeeded: 'Camera and microphone are needed to go LIVE',
-    liveUnavailable: 'LIVE service is unavailable right now', classic: 'More', follow: 'Follow',
+    liveUnavailable: 'LIVE service is unavailable right now', soon: 'Coming soon to the new MilkyWay', follow: 'Follow',
   },
   sw: {
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
@@ -24,7 +24,7 @@ const strings = {
     liveEnded: 'LIVE hii imeisha', sayHi: 'Sema kitu…', coins: 'sarafu', topUp: 'Ongeza', sent: 'imetumwa', queued: 'Itatumwa ukirudi mtandaoni',
     giftFailed: 'Zawadi haikutumwa', noComments: 'Kuwa wa kwanza kutoa maoni', swipeHint: 'Telezesha juu kwa zaidi', chats: 'Ujumbe',
     noChats: 'Bado hakuna mazungumzo', encrypted: 'Ujumbe uliosimbwa', cameraNeeded: 'Kamera na maikrofoni zinahitajika kuanza LIVE',
-    liveUnavailable: 'Huduma ya LIVE haipatikani sasa', classic: 'Zaidi', follow: 'Fuata',
+    liveUnavailable: 'Huduma ya LIVE haipatikani sasa', soon: 'Inakuja hivi karibuni kwenye MilkyWay mpya', follow: 'Fuata',
   },
 };
 const language = (() => { try { return localStorage.getItem('mw_lang') || (navigator.language || 'en').slice(0, 2); } catch { return 'en'; } })();

@@ -1,7 +1,5 @@
 // Sign-in sheet (email + password through supabase-js, loaded only when this opens).
-// Account creation stays in the full app, which collects country, birthday and phone.
 import { t } from '../core/i18n.js';
-import { config } from '../config.js';
 import { supabase } from '../core/net.js';
 import { Sheet } from './sheet.js';
 import { h, toast } from './dom.js';
@@ -26,7 +24,7 @@ export class AuthSheet {
       } catch (error) { message.textContent = error.message || 'Sign-in failed'; }
       finally { submit.disabled = false; }
     } }, email, password, submit, message,
-    h('a', { class: 'link center', href: `${config.classicUrl}#signup` }, t('createAccount'))));
+    h('button', { class: 'link center', type: 'button', onclick: () => toast(t('soon')) }, t('createAccount'))));
   }
   open() { this.sheet.open(); }
 }

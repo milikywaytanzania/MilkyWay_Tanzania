@@ -7,10 +7,10 @@ const issues = [];
 const warnings = [];
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
-// Confirm syntax checks and locale-loading tests pass before packaging.
+// Confirm syntax checks and the core architecture tests pass before packaging.
 for (const [label, args] of [
   ['JavaScript syntax', ['tools/check-syntax.mjs']],
-  ['locale loading tests', ['--test', 'tools/phase3-locale-loading.test.mjs']],
+  ['core architecture tests', ['--test', 'tools/core-architecture.test.mjs']],
 ]) {
   const result = spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8' });
   if (result.status !== 0) issues.push(`${label} failed:\n${result.stdout}\n${result.stderr}`);
