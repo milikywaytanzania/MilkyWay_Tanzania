@@ -1083,7 +1083,7 @@
     if (appliedLanguage !== language()) { appliedLanguage = language();window.dispatchEvent(new CustomEvent('mw-language-change', { detail: { language: appliedLanguage } })); }
   }
   if (typeof I18N !== 'undefined') for (const locale of ['fr', 'zh', 'ar', 'pt', 'hi', 'de']) I18N[locale] = {
-    signup: rows.signup[indexes[locale]], login: rows.login[indexes[locale]], navFeed: rows.feed[indexes[locale]], navPost: rows.post[indexes[locale]], navMsg: rows.messages[indexes[locale]], navAlerts: rows.alerts[indexes[locale]], navProfile: rows.account[indexes[locale]], install: locale === 'fr' ? 'Installer' : locale === 'zh' ? '安装' : window.MilkyWayLocales?.[locale]?.['Install app'] || 'Install app', installText: locale === 'fr' ? 'Installer MilkyWay sur votre téléphone' : locale === 'zh' ? '将MilkyWay添加到手机' : window.MilkyWayLocales?.[locale]?.['Install MilkyWay on your screen'] || 'Install MilkyWay on your screen', guest: rows.guest[indexes[locale]],
+    signup: rows.signup[indexes[locale]], login: rows.login[indexes[locale]], navFeed: rows.feed[indexes[locale]], navPost: rows.post[indexes[locale]], navMsg: rows.messages[indexes[locale]], navAlerts: rows.alerts[indexes[locale]], navProfile: 'Nova', install: locale === 'fr' ? 'Installer' : locale === 'zh' ? '安装' : window.MilkyWayLocales?.[locale]?.['Install app'] || 'Install app', installText: locale === 'fr' ? 'Installer MilkyWay sur votre téléphone' : locale === 'zh' ? '将MilkyWay添加到手机' : window.MilkyWayLocales?.[locale]?.['Install MilkyWay on your screen'] || 'Install MilkyWay on your screen', guest: rows.guest[indexes[locale]],
   };
   function extendLocale(locale) {
     if (!Object.prototype.hasOwnProperty.call(indexes, locale) || !window.MilkyWayLocales?.[locale]) return;

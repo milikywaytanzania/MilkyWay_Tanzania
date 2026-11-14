@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 let checked = 0;
 let failed = false;
-for (const directory of ['.', 'milkyway']) {
+for (const directory of ['.', 'milkyway', 'milkyway/app', 'milkyway/app/core', 'milkyway/app/data', 'milkyway/app/ui', 'api', 'api/_lib']) {
   for (const file of readdirSync(directory, { withFileTypes: true })) {
     if (!file.isFile() || !/\.(html|js)$/.test(file.name)) continue;
     const path = join(directory, file.name);

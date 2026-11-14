@@ -5,12 +5,12 @@ import { test } from 'node:test';
 import vm from 'node:vm';
 
 test('LiveKit fallback uses the published Unpkg UMD bundle path', () => {
-  const markup = source('milkyway/index.html');
+  const markup = source('milkyway/classic.html');
   assert.match(markup, /https:\/\/unpkg\.com\/livekit-client@2\/dist\/livekit-client\.umd\.js/);
 });
 
 test.skip('MilkyWay LIVE stage uses the brand logo watermark and responsive stage chrome', () => {
-  const markup = readFileSync(new URL('../milkyway/index.html', import.meta.url), 'utf8');
+  const markup = readFileSync(new URL('../milkyway/classic.html', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../milkyway/live-immersive-v77.css', import.meta.url), 'utf8');
   assert.ok(markup.includes('class="mwx-brand-watermark" aria-hidden="true"><img src="brand/milkyway-watermark.png"'));
   assert.ok(markup.includes('live-immersive-v77.css?v=83'));
@@ -125,7 +125,7 @@ test.skip('feed videos keep user playback audible and expose fullscreen while au
   assert.match(playback, /frame\.requestFullscreen/);
   assert.match(playback, /video\.webkitEnterFullscreen/);
 
-  const livePage = source('milkyway/index.html');
+  const livePage = source('milkyway/classic.html');
   assert.match(livePage, /mwLiveFullscreen" data-action="fullscreen"/);
   const live = source('milkyway/live-feed.js');
   const attach = live.slice(live.indexOf('  function attachTrack('), live.indexOf('  function detachTrack(', live.indexOf('  function attachTrack(')));
@@ -170,7 +170,7 @@ test('post action menus toggle explicitly and remain open for menu actions', () 
 
 test('post action menus fit and scroll inside narrow mobile viewports', () => {
   const styles = source('milkyway/post-tools.css');
-  const markup = source('milkyway/index.html');
+  const markup = source('milkyway/classic.html');
   const worker = source('milkyway/sw.js');
   assert.match(styles, /#feed>\.post:has\([^}]*mw-message-menu\[open\][\s\S]*overflow:visible!important;[\s\S]*z-index:20!important;/);
   assert.match(styles, /\.mw-message-menu\[open\]\{[\s\S]*inset:auto!important;[\s\S]*transform:none!important;/);
@@ -184,7 +184,7 @@ test('post action menus fit and scroll inside narrow mobile viewports', () => {
 });
 
 test('media enhancement scripts load after the shell and videos stay lazy outside the active view', () => {
-  const markup = source('milkyway/index.html');
+  const markup = source('milkyway/classic.html');
   const playback = source('milkyway/media-playback.js');
   const prefetch = source('milkyway/media-prefetch.js');
   const worker = source('milkyway/sw.js');
@@ -331,7 +331,7 @@ test.skip('cleanup requires the original host account instead of silently report
 });
 
 function authFixture() {
-  const script = source('milkyway/index.html');
+  const script = source('milkyway/classic.html');
   const begin = script.indexOf('let authUpdateGeneration=0;');
   const finish = script.indexOf('});boot()', begin) + 3;
   const scheduled = [];
@@ -674,7 +674,7 @@ test('starting offline never blocks: saved sessions read as valid offline, boot 
   assert.equal(context.window.MilkyWayOffline.offline, false);
   assert.equal(JSON.parse(storage.getItem(key)).expires_at, expired);
 
-  const page = source('milkyway/index.html');
+  const page = source('milkyway/classic.html');
   assert.match(page, /createClient\(SUPABASE_URL,SUPABASE_ANON_KEY,window\.MilkyWayOffline\?\.authStorage/);
   const boot = page.match(/async function boot\(\)\{[\s\S]*?\n\}/)?.[0];
   assert.ok(boot, 'boot function exists and can be inspected');

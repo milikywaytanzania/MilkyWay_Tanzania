@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 test('app shell loads locale loader instead of all locale catalogs', () => {
-  const html = read('milkyway/index.html');
+  const html = read('milkyway/classic.html');
   assert.match(html, /locale-loader\.js\?v=1/);
   assert.doesNotMatch(html, /src=["'][^"']*locale-catalogs\.js/);
   assert.doesNotMatch(html, /src=["'][^"']*german-locale\.js/);
@@ -35,7 +35,7 @@ test('supported catalogs are split and dynamically loadable', () => {
 });
 
 test('default languages avoid downloading supplemental locale catalogs at startup', () => {
-  const html = read('milkyway/index.html');
+  const html = read('milkyway/classic.html');
   const loader = read('milkyway/locale-loader.js');
   assert.ok(!html.includes('locale-catalogs.js'));
   assert.ok(!html.includes('german-locale.js'));

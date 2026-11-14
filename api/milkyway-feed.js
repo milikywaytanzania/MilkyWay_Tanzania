@@ -1,0 +1,110 @@
+// MilkyWay feed API: one request returns a ready-to-render page of the vertical feed.
+// The old client made 6+ sequential reads per page (posts → profiles → privacy → audiences → follows → signals → echoes
+// → saves). Here they run server-side in parallel, so a phone on a slow network waits for a single round trip.
+// Everything still runs as the caller (their JWT), so row-level security stays the final judge.
+//
+//   GET /api/milkyway-feed?action=page&scope=foryou|following&before=<ISO time>&limit=12&media=video
+//   → { posts: [{ id, author, caption, media, createdAt, likes, comments, liked, saved }], next: <ISO time> | null }
+import { route, isUuid, eq, inList } from './_lib/supa.js';
+
+const FOLLOW_TABLES = ['mw_follows', 'follows'];
+const clamp = (value, min, max, fallback) => {
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+};
+const validTime = value => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
+const quiet = promise => promise.catch(() => null);
+
+async function follows(ctx, filter) {
+  for (const table of FOLLOW_TABLES) {
+    const rows = await quiet(ctx.rest(`${table}?${filter}&select=following_id&limit=2000`));
+    if (rows) return new Set(rows.map(row => String(row.following_id)));
+  }
+  return new Set();
+}
+
+async function page({ ctx, query }) {
+  const me = ctx.user?.id || null;
+  const limit = clamp(query.limit, 4, 30, 12);
+  const scope = query.scope === 'following' && me ? 'following' : 'foryou';
+  // Over-fetch a little so privacy filtering rarely leaves a short page.
+  const filters = [`select=id,author_id,author_name,caption,media_url,media_type,created_at`, `order=created_at.desc`, `limit=${limit * 2}`];
+  if (validTime(query.before)) filters.push(`created_at=lt.${encodeURIComponent(new Date(query.before).toISOString())}`);
+  // Default: every post (text posts render as cards). media=video → videos only, media=visual → photos + videos.
+  if (query.media === 'video') filters.push('media_type=eq.video');
+  else if (query.media === 'visual') filters.push('media_url=not.is.null');
+
+  let followed = null;
+  if (scope === 'following') {
+    followed = await follows(ctx, `follower_id=${eq(me)}`);
+    const authors = [...followed, me].filter(isUuid).slice(0, 400);
+    filters.push(`author_id=${inList(authors)}`);
+  }
+
+  const rows = (await ctx.rest(`mw_posts?${filters.join('&')}`)) || [];
+  if (!rows.length) return { posts: [], next: null };
+  const ids = rows.map(row => row.id);
+  const authorIds = [...new Set(rows.map(row => String(row.author_id)).filter(isUuid))];
+
+  const [profiles, privacy, audiences, signals, echoes, saves] = await Promise.all([
+    authorIds.length ? quiet(ctx.rest(`mw_profiles?id=${inList(authorIds)}&select=id,display_name,username,avatar_url`)) : [],
+    authorIds.length ? quiet(ctx.rpc('mw_privacy_flags', { p_ids: authorIds })) : {},
+    quiet(ctx.rpc('mw_post_audiences', { p_ids: ids })),
+    quiet(ctx.rest(`mw_signals?post_id=${inList(ids)}&kind=eq.light&select=post_id,user_id&limit=10000`)),
+    quiet(ctx.rest(`mw_echoes?post_id=${inList(ids)}&select=post_id&limit=10000`)),
+    me ? quiet(ctx.rest(`mw_saves?user_id=${eq(me)}&post_id=${inList(ids)}&select=post_id`)) : [],
+  ]);
+
+  // Private accounts: owners and their followers only.
+  const privateAuthors = authorIds.filter(id => id !== me && privacy?.[id]?.private);
+  let allowedPrivate = new Set();
+  if (privateAuthors.length && me) {
+    allowedPrivate = followed || await follows(ctx, `follower_id=${eq(me)}&following_id=${inList(privateAuthors)}`);
+  }
+  const hiddenPosts = new Set((audiences || []).filter(row => !row.can_see).map(row => row.post_id));
+  const profileById = new Map((profiles || []).map(profile => [String(profile.id), profile]));
+  const likes = new Map(), liked = new Set(), comments = new Map();
+  for (const row of signals || []) {
+    likes.set(row.post_id, (likes.get(row.post_id) || 0) + 1);
+    if (me && String(row.user_id) === me) liked.add(row.post_id);
+  }
+  for (const row of echoes || []) comments.set(row.post_id, (comments.get(row.post_id) || 0) + 1);
+  const saved = new Set((saves || []).map(row => row.post_id));
+
+  const allowed = rows.filter(row => {
+    const author = String(row.author_id);
+    if (hiddenPosts.has(row.id)) return false;
+    if (author !== me && privacy?.[author]?.private && !allowedPrivate.has(author)) return false;
+    return true;
+  });
+  const visible = allowed.slice(0, limit);
+
+  const posts = visible.map(row => {
+    const profile = profileById.get(String(row.author_id));
+    return {
+      id: row.id,
+      author: {
+        id: String(row.author_id),
+        name: profile?.display_name || row.author_name || 'MilkyWay',
+        username: profile?.username || '',
+        avatar: profile?.avatar_url || '',
+      },
+      caption: row.caption || '',
+      media: row.media_url ? { url: row.media_url, type: row.media_type === 'video' ? 'video' : 'image' } : null,
+      createdAt: row.created_at,
+      likes: likes.get(row.id) || 0,
+      comments: comments.get(row.id) || 0,
+      liked: liked.has(row.id),
+      saved: saved.has(row.id),
+    };
+  });
+  // Cursor: right after the last post returned; when filtering hid most rows, after the last row scanned.
+  let next = null;
+  if (allowed.length > limit) next = visible[visible.length - 1].created_at;
+  else if (rows.length >= limit * 2) next = rows[rows.length - 1].created_at;
+  return { posts, next };
+}
+
+export default route({
+  page: { auth: false, run: page },
+});
