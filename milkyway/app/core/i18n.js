@@ -3,6 +3,7 @@ import { extraLocales } from './locales.js';
 
 const strings = {
   en: {
+    requestTimeout: 'The connection is slow. Check your network and try again.', callServiceError: 'Could not connect to the call service. Try again in a moment.', savedPosts: 'Saved posts', noSaved: 'No saved posts yet', unsave: 'Remove',
     forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Lives',
     tapForSound: 'Tap for sound', offline: 'Offline · showing saved posts', backOnline: 'Back online', empty: 'Nothing here yet',
     emptyFollowing: 'Follow creators to fill this feed', retry: 'Retry', loading: 'Loading…', comments: 'Comments',
@@ -68,6 +69,7 @@ const strings = {
     sayHello: 'Say hello 👋', deleteForMe: 'Delete for me', edited: 'edited',
   },
   sw: {
+    requestTimeout: 'Mtandao uko polepole. Angalia muunganisho wako na ujaribu tena.', callServiceError: 'Imeshindikana kuunganisha huduma ya simu. Jaribu tena baada ya muda mfupi.', savedPosts: 'Post zilizohifadhiwa', noSaved: 'Bado hujahifadhi post yoyote', unsave: 'Ondoa',
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
     tapForSound: 'Gusa kupata sauti', offline: 'Nje ya mtandao · machapisho yaliyohifadhiwa', backOnline: 'Umerudi mtandaoni', empty: 'Bado hakuna kitu',
     emptyFollowing: 'Fuata watu ili kujaza ukurasa huu', retry: 'Jaribu tena', loading: 'Inapakia…', comments: 'Maoni',

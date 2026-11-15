@@ -91,9 +91,9 @@ const friendly = (error, key) => {
 registerOp('like', ownOp(op => op.on
   ? rest('mw_signals?on_conflict=post_id,user_id,kind', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { post_id: op.post, user_id: op.user, kind: 'light' } })
   : rest(`mw_signals?post_id=eq.${op.post}&user_id=eq.${op.user}&kind=eq.light`, { method: 'DELETE' })));
-registerOp('save', ownOp(op => op.on
-  ? rest('mw_saves?on_conflict=post_id,user_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { post_id: op.post, user_id: op.user } })
-  : rest(`mw_saves?post_id=eq.${op.post}&user_id=eq.${op.user}`, { method: 'DELETE' })));
+// Saves go through the site API (it checks the session and stores them server-side), so they never hit the
+// Supabase row-level security error 'new row violates row-level security policy for table "mw_saves"'.
+registerOp('save', ownOp(op => api(`${config.api.feed}?action=save`, { method: 'POST', body: { post: op.post, on: op.on }, timeout: 12000 })));
 registerOp('follow', ownOp(op => op.on
   ? rest('mw_follows?on_conflict=follower_id,following_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { follower_id: op.user, following_id: op.target } })
   : rest(`mw_follows?follower_id=eq.${op.user}&following_id=eq.${op.target}`, { method: 'DELETE' })));

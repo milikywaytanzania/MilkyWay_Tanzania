@@ -77,6 +77,7 @@ export class NovaMenu {
       row('🔒', t('privacy'), { onclick: () => this.#privacy() }),
       coins,
       row('🎬', t('studio'), { detail: t('studioHint'), onclick: () => this.#studio() }),
+      row('🔖', t('savedPosts'), { onclick: () => this.#saved() }),
       h('p', { class: 'nova-section' }, t('account')),
       row('✉️', t('changeEmail'), { detail: auth.user?.email || '', onclick: () => this.#email() }),
       row('📱', t('changePhone'), { onclick: () => this.#phone() }),
@@ -160,6 +161,38 @@ export class NovaMenu {
             h('div', { class: 'chat-text' }, h('b', {}, item.from || 'MilkyWay'), h('span', { class: 'muted' }, ago(item.at))),
             h('em', { class: 'nova-coins' }, `+${count(Number(item.earned) || 0)}`))))
           : h('p', { class: 'muted center' }, t('empty')));
+    } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
+  }
+
+  // ---- Saved posts --------------------------------------------------------------------------------------------
+  async #saved() {
+    const box = h('div', { class: 'stack' }, h('p', { class: 'muted center' }, t('loading')));
+    this.#screen(t('savedPosts'), box);
+    try {
+      const list = (await api(`${config.api.feed}?action=saved`, { timeout: 12000 }))?.saved || [];
+      const ids = list.map(item => item.postId).slice(0, 100);
+      let posts = [];
+      if (ids.length) {
+        const sb = await supabase();
+        const { data, error } = await sb.from('mw_posts').select('id,caption,media_url,media_type,created_at').in('id', ids);
+        if (error) throw error;
+        const byId = new Map((data || []).map(post => [String(post.id), post]));
+        posts = ids.map(id => byId.get(id)).filter(Boolean);
+      }
+      if (!posts.length) { box.replaceChildren(h('p', { class: 'muted center' }, t('noSaved'))); return; }
+      box.replaceChildren(h('div', { class: 'nova-list' }, ...posts.map(post => {
+        const remove = h('button', { class: 'pill-btn', type: 'button' }, t('unsave'));
+        const node = h('div', { class: 'nova-list-row' },
+          h('span', { class: 'nova-kind', 'aria-hidden': 'true' }, /video/.test(post.media_type || '') ? '🎬' : post.media_url ? '🖼' : '✍️'),
+          h('div', { class: 'chat-text' }, h('b', {}, (post.caption || t('post')).slice(0, 60)), h('span', { class: 'muted' }, ago(post.created_at))),
+          remove);
+        remove.onclick = async () => {
+          remove.disabled = true;
+          try { await api(`${config.api.feed}?action=save`, { method: 'POST', body: { post: post.id, on: false }, timeout: 12000 }); node.remove(); }
+          catch (error) { remove.disabled = false; toast(error?.message || t('retry')); }
+        };
+        return node;
+      })));
     } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
   }
 

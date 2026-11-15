@@ -5,7 +5,10 @@
 //
 //   GET /api/milkyway-feed?action=page&scope=foryou|following&before=<ISO time>&limit=12&media=video
 //   → { posts: [{ id, author, caption, media, createdAt, likes, comments, liked, saved }], next: <ISO time> | null }
-import { route, isUuid, eq, inList } from './_lib/supa.js';
+//   POST /api/milkyway-feed?action=save { post, on }   (signed in) → { saved }
+//   GET  /api/milkyway-feed?action=saved               (signed in) → { saved: [{ postId, savedAt }] }
+import { route, isUuid, eq, inList, ApiError } from './_lib/supa.js';
+import { savedAmong, setSaved, savedList } from './_lib/saves.js';
 
 const FOLLOW_TABLES = ['mw_follows', 'follows'];
 const clamp = (value, min, max, fallback) => {
@@ -61,7 +64,7 @@ async function page({ ctx, query }) {
     quiet(ctx.rpc('mw_post_audiences', { p_ids: ids })),
     quiet(ctx.rest(`mw_signals?post_id=${inList(ids)}&kind=eq.light&select=post_id,user_id&limit=10000`)),
     quiet(ctx.rest(`mw_echoes?post_id=${inList(ids)}&select=post_id&limit=10000`)),
-    me ? quiet(ctx.rest(`mw_saves?user_id=${eq(me)}&post_id=${inList(ids)}&select=post_id`)) : [],
+    savedAmong(ctx, ids),
   ]);
 
   // Private accounts: owners and their followers only.
@@ -78,7 +81,7 @@ async function page({ ctx, query }) {
     if (me && String(row.user_id) === me) liked.add(row.post_id);
   }
   for (const row of echoes || []) comments.set(row.post_id, (comments.get(row.post_id) || 0) + 1);
-  const saved = new Set((saves || []).map(row => row.post_id));
+  const saved = saves;
 
   const allowed = rows.filter(row => {
     const author = String(row.author_id);
@@ -104,7 +107,7 @@ async function page({ ctx, query }) {
       likes: likes.get(row.id) || 0,
       comments: comments.get(row.id) || 0,
       liked: liked.has(row.id),
-      saved: saved.has(row.id),
+      saved: saved.has(String(row.id)),
     };
   });
   // Cursor: right after the last post returned; when filtering hid most rows, after the last row scanned.
@@ -116,4 +119,11 @@ async function page({ ctx, query }) {
 
 export default route({
   page: { auth: false, run: page },
+  // POST { post, on } saves / unsaves one post for the signed-in user.
+  save: async ({ ctx, body, method }) => {
+    if (method !== 'POST') throw new ApiError(405, 'Method not allowed.');
+    return setSaved(ctx, body.post, body.on !== false);
+  },
+  // GET → { saved: [{ postId, savedAt }] }, newest first.
+  saved: async ({ ctx }) => ({ saved: await savedList(ctx) }),
 });

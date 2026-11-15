@@ -11,7 +11,8 @@ export const CAMERA = 1, MIC = 2;
 const SOURCE_NAMES = { [CAMERA]: 'camera', [MIC]: 'microphone' };
 
 export const livekitConfigured = () => !!(env('LIVEKIT_URL') && env('LIVEKIT_API_KEY') && env('LIVEKIT_API_SECRET'));
-export const livekitUrl = () => env('LIVEKIT_URL').replace(/\/+$/, '');
+// Clients connect over WebSocket; an https:// project URL (as copied from the LiveKit dashboard) means the same host.
+export const livekitUrl = () => env('LIVEKIT_URL').replace(/\/+$/, '').replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:');
 
 function sign(claims) {
   const head = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(claims)}`;

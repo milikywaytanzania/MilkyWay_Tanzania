@@ -16,6 +16,7 @@
     "release:check": "node tools/release-readiness.mjs"
   },
   "dependencies": {
+    "@netlify/database": "^2.0.3",
     "express": "^4.21.2"
   },
   "devDependencies": {

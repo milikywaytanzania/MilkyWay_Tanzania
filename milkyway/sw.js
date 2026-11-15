@@ -1,9 +1,9 @@
 // MilkyWay service worker.
 // Precaches the new app shell (index.html + app/ modules) so startup never waits for the network; the feed itself
 // comes from IndexedDB (app/core/store.js). Other assets are cached on first use by the shared stale-while-revalidate rule.
-const CACHE='milkyway-v208-messages-calls-i18n';
+const CACHE='milkyway-v209-saves-livekit-fixes';
 const SHELL=['./','./index.html','./manifest.json','./favicon.ico','./icon-192.png','./icon-512.png','./brand/favicon-32.png','./splash.css?v=1','./splash.js?v=1','./brand/milkyway-splash.webp','./brand/milkyway-watermark-galaxy.webp',
-  './app/app.css?v=8','./app/main.js','./app/config.js',
+  './app/app.css?v=9','./app/main.js','./app/config.js',
   './app/core/events.js','./app/core/sdk.js','./app/core/net.js','./app/core/store.js','./app/core/sync.js','./app/core/device.js','./app/core/media.js','./app/core/i18n.js','./app/core/locales.js',
   './app/data/feed.js','./app/data/profiles.js','./app/data/comments.js','./app/data/live.js','./app/data/gifts.js','./app/data/chats.js','./app/data/messages.js','./app/data/presence.js',
   './app/ui/dom.js','./app/ui/pager.js','./app/ui/playback.js','./app/ui/feed-view.js','./app/ui/sheet.js','./app/ui/live-view.js','./app/ui/live-session.js','./app/ui/live-controls.js',
@@ -15,7 +15,7 @@ if (self.MWCache) self.MWCache.install({
   prefix: 'milkyway-',
   version: CACHE.replace(/^milkyway-/, ''),
   precache: SHELL,
-  required: ['./', './index.html', './app/app.css?v=8', './app/main.js', './app/core/store.js', './app/ui/feed-view.js'],
+  required: ['./', './index.html', './app/app.css?v=9', './app/main.js', './app/core/store.js', './app/ui/feed-view.js'],
   offlinePage: './index.html',
 });
 // Background Sync (where supported) wakes the worker once the network returns; open MilkyWay windows then refresh quietly.

@@ -533,3 +533,7 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .call-btn.accept { background: #2bd67b; color: #fff; animation: call-pulse 1.4s ease-out infinite; }
 html[data-low-end] .call-btn { backdrop-filter: none; }
 @media (prefers-reduced-motion: reduce) { .call-btn.accept, .call-layer .avatar { animation: none !important; } }
+
+/* Language picker on the sign-in sheet (guests can switch language before logging in). */
+.auth-lang { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.auth-lang .field { flex: 1; min-height: 40px; }

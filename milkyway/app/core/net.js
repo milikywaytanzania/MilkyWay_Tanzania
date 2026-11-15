@@ -5,6 +5,33 @@
 //  - api() and rest() are thin fetch wrappers with timeouts, auth, one retry after a token refresh,
 //    and online/offline tracking that the sync engine listens to.
 import { config } from '../config.js';
+import { t } from './i18n.js';
+
+// Older Android WebViews / iOS < 16 have no AbortSignal.timeout / AbortSignal.any; without them every request
+// failed before it was sent ("AbortSignal.timeout is not a function"). Small polyfills keep timeouts working.
+if (typeof AbortSignal !== 'undefined') {
+  if (typeof AbortSignal.timeout !== 'function') {
+    AbortSignal.timeout = ms => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        let reason;
+        try { reason = new DOMException('The request timed out.', 'TimeoutError'); } catch { reason = Object.assign(new Error('The request timed out.'), { name: 'TimeoutError' }); }
+        controller.abort(reason);
+      }, ms);
+      return controller.signal;
+    };
+  }
+  if (typeof AbortSignal.any !== 'function') {
+    AbortSignal.any = signals => {
+      const controller = new AbortController();
+      for (const signal of signals) {
+        if (signal.aborted) { controller.abort(signal.reason); break; }
+        signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+      }
+      return controller.signal;
+    };
+  }
+}
 import { bus, idle } from './events.js';
 import { loadSupabase } from './sdk.js';
 
@@ -85,8 +112,8 @@ addEventListener('online', () => setOnline(true));
 addEventListener('offline', () => setOnline(false));
 export const isOnline = () => online;
 
-const NETWORK_ERROR = /failed to fetch|networkerror|load failed|network request failed|timeout|aborted/i;
-export const isNetworkError = error => error?.name === 'TimeoutError' || error?.name === 'AbortError' || NETWORK_ERROR.test(String(error?.message || ''));
+const NETWORK_ERROR = /failed to fetch|networkerror|load failed|network request failed|timeout|timed out|aborted|signal is aborted/i;
+export const isNetworkError = error => error?.name === 'TimeoutError' || error?.name === 'AbortError' || error?.name === 'NetworkError' || NETWORK_ERROR.test(String(error?.message || ''));
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -98,12 +125,19 @@ async function send(url, { method = 'GET', body, headers = {}, timeout = 10000, 
     method,
     headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: signal ? AbortSignal.any?.([signal, AbortSignal.timeout(timeout)]) || signal : AbortSignal.timeout(timeout),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout),
   };
   if (token) init.headers.Authorization = `Bearer ${token}`;
   let response;
   try { response = await fetch(url, init); }
-  catch (error) { if (isNetworkError(error)) setOnline(false); throw error; }
+  catch (error) {
+    if (signal?.aborted) throw error; // cancelled by the caller on purpose
+    if (!isNetworkError(error)) throw error;
+    setOnline(false);
+    // Readable text instead of "signal timed out" / "The user aborted a request" / "Failed to fetch".
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    throw Object.assign(new Error(t(timedOut ? 'requestTimeout' : 'connectionLost')), { name: timedOut ? 'TimeoutError' : 'NetworkError', cause: error });
+  }
   setOnline(true);
   if (response.status === 401 && token && !retried) {
     await accessToken({ force: true });

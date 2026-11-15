@@ -1,5 +1,5 @@
 // Sign-in sheet (email + password through supabase-js, loaded only when this opens).
-import { t } from '../core/i18n.js';
+import { t, lang, languages, setLanguage } from '../core/i18n.js';
 import { supabase } from '../core/net.js';
 import { Sheet } from './sheet.js';
 import { h, toast } from './dom.js';
@@ -24,7 +24,11 @@ export class AuthSheet {
       } catch (error) { message.textContent = error.message || 'Sign-in failed'; }
       finally { submit.disabled = false; }
     } }, email, password, submit, message,
-    h('button', { class: 'link center', type: 'button', onclick: () => toast(t('soon')) }, t('createAccount'))));
+    h('button', { class: 'link center', type: 'button', onclick: () => toast(t('soon')) }, t('createAccount'))),
+    // Language can be picked before signing in (the signed-in Nova menu has the same list).
+    h('label', { class: 'auth-lang' }, h('span', { 'aria-hidden': 'true' }, '🌐'),
+      h('select', { class: 'field', 'aria-label': t('language'), onchange: event => setLanguage(event.target.value) },
+        ...languages.map(item => h('option', { value: item.code, selected: item.code === lang }, item.name)))));
   }
   open() { this.sheet.open(); }
 }

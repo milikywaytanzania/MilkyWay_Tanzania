@@ -20,7 +20,7 @@ async function access(ctx, call, name) {
   // Signed here with the site's LiveKit credentials (the same ones LIVE uses), so the token always matches the
   // LiveKit project in LIVEKIT_URL. A token signed with another project's key fails with
   // "could not establish signal connection: invalid API key".
-  if (livekitConfigured() && /^wss:\/\//i.test(livekitUrl())) {
+  if (livekitConfigured() && /^wss?:\/\//i.test(livekitUrl())) {
     let profile = null;
     try { [profile] = await ctx.rest(`mw_profiles?id=eq.${ctx.user.id}&select=display_name,username,avatar_url&limit=1`) || []; } catch {}
     const token = accessToken({

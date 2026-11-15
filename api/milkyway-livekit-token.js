@@ -22,6 +22,7 @@ function getSupabaseConfig(req) {
 }
 
 const LIVE_ROOM = /^mw-(audio|video)-live-[a-f0-9-]{36}$/i;
+const CALL_ROOM = /^mw-conversation-(audio|video)-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i;
 
 async function removedFromLive(url, apiKey, authorization, body) {
   const room = typeof body?.room === 'string' ? body.room : typeof body?.roomName === 'string' ? body.roomName : '';
@@ -79,13 +80,45 @@ async function liveToken(req, res, body) {
   }
 }
 
+// Signs a token for a one-to-one call room (mw-conversation-<audio|video>-<call id>): only the caller and the callee
+// of a call that is still ringing or connected get one.
+async function callToken(req, res, body) {
+  const ctx = await authenticate(req, res);
+  if (!ctx) return;
+  const room = typeof body.room === 'string' ? body.room : body.roomName;
+  const [, kind, id] = CALL_ROOM.exec(room);
+  const me = ctx.user.id;
+  try {
+    const [call] = await ctx.rest(`mw_dm_calls?id=eq.${id.toLowerCase()}&select=caller_id,callee_id,status,offer&limit=1`) || [];
+    if (!call || ![call.caller_id, call.callee_id].includes(me)) return res.status(403).json({ error: 'Not allowed.' });
+    if (!['ringing', 'accepted'].includes(call.status)) return res.status(403).json({ error: 'This call is no longer active.' });
+    const video = kind.toLowerCase() === 'video';
+    if ((call.offer?.mode === 'video') !== video) return res.status(403).json({ error: 'Not allowed.' });
+    const [profile] = await ctx.rest(`mw_profiles?id=eq.${me}&select=display_name,username,avatar_url&limit=1`).catch(() => []) || [];
+    const token = accessToken({
+      identity: me, room, canPublish: true, sources: video ? [CAMERA, MIC] : [MIC], ttlSeconds: 2 * 3600,
+      name: String(profile?.display_name || profile?.username || body.name || 'MilkyWay user').slice(0, 80),
+      metadata: JSON.stringify({ avatar: String(profile?.avatar_url || '').slice(0, 500) }),
+    });
+    return res.status(200).json({ contractVersion: 2, token, serverUrl: livekitUrl(), roomName: room, room, service: 'netlify' });
+  } catch (error) {
+    return res.status(error?.status && error.status < 500 ? error.status : 503).json({ error: error?.message || 'Call service is unavailable right now.' });
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  if (req.method === 'POST' && livekitConfigured() && /^wss:\/\//i.test(livekitUrl()) && req.body && typeof req.body === 'object') {
+  // With LiveKit configured on this site, every token is signed here with LIVEKIT_API_KEY / LIVEKIT_API_SECRET, so it
+  // always matches LIVEKIT_URL. Tokens from the Supabase function are signed with that project's own secrets; when
+  // those differ, LiveKit refuses the connection with "could not establish signal connection: invalid API key".
+  if (req.method === 'POST' && livekitConfigured() && /^wss?:\/\//i.test(livekitUrl()) && req.body && typeof req.body === 'object') {
     const room = typeof req.body.room === 'string' ? req.body.room : typeof req.body.roomName === 'string' ? req.body.roomName : '';
-    if (LIVE_ROOM.test(room) && (req.body.action || 'token') === 'token') return liveToken(req, res, req.body);
+    if ((req.body.action || 'token') === 'token') {
+      if (LIVE_ROOM.test(room)) return liveToken(req, res, req.body);
+      if (CALL_ROOM.test(room)) return callToken(req, res, req.body);
+    }
   }
 
   if (req.method !== 'GET' && req.method !== 'POST') {

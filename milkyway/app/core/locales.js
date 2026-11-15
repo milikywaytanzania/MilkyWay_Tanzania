@@ -2,6 +2,7 @@
 // any string missing here falls back to English. English and Swahili (complete) live in i18n.js.
 export const extraLocales = {
   fr: {
+    requestTimeout: 'La connexion est lente. Vérifiez votre réseau et réessayez.', callServiceError: 'Impossible de joindre le service d’appel. Réessayez dans un instant.', savedPosts: 'Publications enregistrées', noSaved: 'Aucune publication enregistrée', unsave: 'Retirer',
     forYou: 'Pour toi', following: 'Abonnements', create: 'Créer', inbox: 'Messages', explore: 'Lives', tapForSound: 'Touchez pour le son',
     offline: 'Hors ligne · publications enregistrées', backOnline: 'De retour en ligne', empty: 'Rien pour le moment', retry: 'Réessayer',
     loading: 'Chargement…', comments: 'Commentaires', addComment: 'Ajouter un commentaire…', send: 'Envoyer', signIn: 'Se connecter',
@@ -22,6 +23,7 @@ export const extraLocales = {
     incomingVideo: 'Appel vidéo entrant', callEnded: 'Appel terminé', endCall: 'Raccrocher', back: 'Retour', update: 'Mettre à jour', wallet: 'Portefeuille',
   },
   es: {
+    requestTimeout: 'La conexión es lenta. Revisa tu red e inténtalo de nuevo.', callServiceError: 'No se pudo conectar con el servicio de llamadas. Inténtalo en un momento.', savedPosts: 'Publicaciones guardadas', noSaved: 'Aún no hay publicaciones guardadas', unsave: 'Quitar',
     forYou: 'Para ti', following: 'Siguiendo', create: 'Crear', inbox: 'Mensajes', explore: 'Lives', tapForSound: 'Toca para activar el sonido',
     offline: 'Sin conexión · publicaciones guardadas', backOnline: 'Conexión restablecida', empty: 'Aún no hay nada', retry: 'Reintentar',
     loading: 'Cargando…', comments: 'Comentarios', addComment: 'Añade un comentario…', send: 'Enviar', signIn: 'Iniciar sesión',
@@ -42,6 +44,7 @@ export const extraLocales = {
     incomingVideo: 'Videollamada entrante', callEnded: 'Llamada finalizada', endCall: 'Colgar', back: 'Atrás', update: 'Actualizar', wallet: 'Billetera',
   },
   pt: {
+    requestTimeout: 'A conexão está lenta. Verifique sua rede e tente novamente.', callServiceError: 'Não foi possível conectar ao serviço de chamadas. Tente novamente em instantes.', savedPosts: 'Publicações salvas', noSaved: 'Nenhuma publicação salva ainda', unsave: 'Remover',
     forYou: 'Para você', following: 'Seguindo', create: 'Criar', inbox: 'Mensagens', explore: 'Lives', tapForSound: 'Toque para ativar o som',
     offline: 'Offline · publicações salvas', backOnline: 'Online novamente', empty: 'Nada aqui ainda', retry: 'Tentar novamente',
     loading: 'Carregando…', comments: 'Comentários', addComment: 'Adicione um comentário…', send: 'Enviar', signIn: 'Entrar',
@@ -62,6 +65,7 @@ export const extraLocales = {
     incomingVideo: 'Chamada de vídeo recebida', callEnded: 'Chamada encerrada', endCall: 'Desligar', back: 'Voltar', update: 'Atualizar', wallet: 'Carteira',
   },
   ar: {
+    requestTimeout: 'الاتصال بطيء. تحقق من الشبكة وحاول مرة أخرى.', callServiceError: 'تعذر الاتصال بخدمة المكالمات. حاول بعد قليل.', savedPosts: 'المنشورات المحفوظة', noSaved: 'لا توجد منشورات محفوظة بعد', unsave: 'إزالة',
     forYou: 'لك', following: 'المتابَعون', create: 'إنشاء', inbox: 'الرسائل', explore: 'البث', tapForSound: 'انقر لتشغيل الصوت',
     offline: 'غير متصل · منشورات محفوظة', backOnline: 'عاد الاتصال', empty: 'لا شيء هنا بعد', retry: 'إعادة المحاولة',
     loading: 'جارٍ التحميل…', comments: 'التعليقات', addComment: 'أضف تعليقًا…', send: 'إرسال', signIn: 'تسجيل الدخول',
@@ -82,6 +86,7 @@ export const extraLocales = {
     incomingVideo: 'مكالمة فيديو واردة', callEnded: 'انتهت المكالمة', endCall: 'إنهاء', back: 'رجوع', update: 'تحديث', wallet: 'المحفظة',
   },
   zh: {
+    requestTimeout: '网络较慢，请检查网络后重试。', callServiceError: '无法连接通话服务，请稍后重试。', savedPosts: '已收藏的帖子', noSaved: '还没有收藏的帖子', unsave: '移除',
     forYou: '推荐', following: '关注', create: '创作', inbox: '消息', explore: '直播', tapForSound: '点按开启声音',
     offline: '离线 · 显示已保存的帖子', backOnline: '已恢复联网', empty: '这里还没有内容', retry: '重试',
     loading: '加载中…', comments: '评论', addComment: '添加评论…', send: '发送', signIn: '登录',
@@ -102,6 +107,7 @@ export const extraLocales = {
     incomingVideo: '视频来电', callEnded: '通话已结束', endCall: '挂断', back: '返回', update: '更新', wallet: '钱包',
   },
   hi: {
+    requestTimeout: 'कनेक्शन धीमा है। अपना नेटवर्क जाँचें और फिर से कोशिश करें।', callServiceError: 'कॉल सेवा से कनेक्ट नहीं हो सका। थोड़ी देर में फिर कोशिश करें।', savedPosts: 'सहेजी गई पोस्ट', noSaved: 'अभी कोई सहेजी गई पोस्ट नहीं', unsave: 'हटाएँ',
     forYou: 'आपके लिए', following: 'फ़ॉलो किए गए', create: 'बनाएँ', inbox: 'संदेश', explore: 'लाइव', tapForSound: 'आवाज़ के लिए टैप करें',
     offline: 'ऑफ़लाइन · सहेजी गई पोस्ट', backOnline: 'फिर से ऑनलाइन', empty: 'यहाँ अभी कुछ नहीं है', retry: 'फिर कोशिश करें',
     loading: 'लोड हो रहा है…', comments: 'टिप्पणियाँ', addComment: 'टिप्पणी जोड़ें…', send: 'भेजें', signIn: 'साइन इन',
@@ -122,6 +128,7 @@ export const extraLocales = {
     incomingVideo: 'आने वाली वीडियो कॉल', callEnded: 'कॉल समाप्त', endCall: 'कॉल काटें', back: 'वापस', update: 'अपडेट करें', wallet: 'वॉलेट',
   },
   de: {
+    requestTimeout: 'Die Verbindung ist langsam. Prüfe dein Netzwerk und versuche es erneut.', callServiceError: 'Der Anrufdienst ist nicht erreichbar. Versuche es gleich noch einmal.', savedPosts: 'Gespeicherte Beiträge', noSaved: 'Noch keine gespeicherten Beiträge', unsave: 'Entfernen',
     forYou: 'Für dich', following: 'Gefolgt', create: 'Erstellen', inbox: 'Nachrichten', explore: 'Lives', tapForSound: 'Für Ton tippen',
     offline: 'Offline · gespeicherte Beiträge', backOnline: 'Wieder online', empty: 'Hier ist noch nichts', retry: 'Erneut versuchen',
     loading: 'Wird geladen…', comments: 'Kommentare', addComment: 'Kommentar hinzufügen…', send: 'Senden', signIn: 'Anmelden',
@@ -142,6 +149,7 @@ export const extraLocales = {
     incomingVideo: 'Eingehender Videoanruf', callEnded: 'Anruf beendet', endCall: 'Auflegen', back: 'Zurück', update: 'Aktualisieren', wallet: 'Wallet',
   },
   ru: {
+    requestTimeout: 'Медленное соединение. Проверьте сеть и попробуйте снова.', callServiceError: 'Не удалось подключиться к сервису звонков. Повторите попытку чуть позже.', savedPosts: 'Сохранённые публикации', noSaved: 'Пока нет сохранённых публикаций', unsave: 'Убрать',
     forYou: 'Для вас', following: 'Подписки', create: 'Создать', inbox: 'Сообщения', explore: 'Эфиры', tapForSound: 'Нажмите для звука',
     offline: 'Нет сети · сохранённые публикации', backOnline: 'Снова в сети', empty: 'Здесь пока пусто', retry: 'Повторить',
     loading: 'Загрузка…', comments: 'Комментарии', addComment: 'Добавьте комментарий…', send: 'Отправить', signIn: 'Войти',
@@ -162,6 +170,7 @@ export const extraLocales = {
     incomingVideo: 'Входящий видеозвонок', callEnded: 'Звонок завершён', endCall: 'Завершить', back: 'Назад', update: 'Обновить', wallet: 'Кошелёк',
   },
   ja: {
+    requestTimeout: '接続が遅くなっています。ネットワークを確認して再試行してください。', callServiceError: '通話サービスに接続できませんでした。しばらくしてから再試行してください。', savedPosts: '保存した投稿', noSaved: '保存した投稿はまだありません', unsave: '削除',
     forYou: 'おすすめ', following: 'フォロー中', create: '作成', inbox: 'メッセージ', explore: 'ライブ', tapForSound: 'タップして音声オン',
     offline: 'オフライン · 保存済みの投稿', backOnline: 'オンラインに戻りました', empty: 'まだ何もありません', retry: '再試行',
     loading: '読み込み中…', comments: 'コメント', addComment: 'コメントを追加…', send: '送信', signIn: 'ログイン',
@@ -182,6 +191,7 @@ export const extraLocales = {
     incomingVideo: 'ビデオ通話の着信', callEnded: '通話終了', endCall: '終了', back: '戻る', update: '更新', wallet: 'ウォレット',
   },
   tr: {
+    requestTimeout: 'Bağlantı yavaş. Ağınızı kontrol edip tekrar deneyin.', callServiceError: 'Arama hizmetine bağlanılamadı. Birazdan tekrar deneyin.', savedPosts: 'Kaydedilen gönderiler', noSaved: 'Henüz kaydedilen gönderi yok', unsave: 'Kaldır',
     forYou: 'Senin için', following: 'Takip', create: 'Oluştur', inbox: 'Mesajlar', explore: 'Canlılar', tapForSound: 'Ses için dokun',
     offline: 'Çevrimdışı · kayıtlı gönderiler', backOnline: 'Yeniden çevrimiçi', empty: 'Burada henüz bir şey yok', retry: 'Tekrar dene',
     loading: 'Yükleniyor…', comments: 'Yorumlar', addComment: 'Yorum ekle…', send: 'Gönder', signIn: 'Giriş yap',

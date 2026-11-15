@@ -40,8 +40,11 @@ async function fetchToken(live, host) {
   let payload;
   try { payload = await api(config.livekit.tokenEndpoint, { method: 'POST', body, timeout: 12000 }); }
   catch (error) {
-    if (error.status === 401 || error.status === 403) throw error;
-    // Site API unreachable or not deployed here: go straight to the Supabase Edge Function.
+    // Only when the site API is missing on this host (static mirror) or unreachable, use the Supabase Edge Function.
+    // A real answer from the site API (403, 404, 503…) is final: the Edge Function signs with other LiveKit secrets,
+    // which LiveKit rejects with "could not establish signal connection: invalid API key".
+    const missing = !error.status || error.status === 404 || error.status === 405 || (error.status === 502 && /invalid response/i.test(error.message || ''));
+    if (!missing) throw error;
     const token = await accessToken();
     const response = await fetch(config.livekit.directTokenEndpoint, {
       method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(12000),
@@ -129,7 +132,15 @@ export class LiveSession extends Emitter {
         else this.emit('state', 'disconnected');
       });
 
-    await room.connect(token.serverUrl, token.token, { autoSubscribe: true });
+    try { await room.connect(token.serverUrl, token.token, { autoSubscribe: true }); }
+    catch (error) {
+      // A stale or mismatched token ("invalid API key", expired): drop it and connect once more with a fresh one.
+      tokenCache.delete(this.live.room);
+      if (this.closed || !/signal|api key|token|unauthori[sz]ed|401/i.test(String(error?.message || ''))) throw error;
+      const fresh = await fetchToken(this.live, this.host);
+      if (this.closed) return;
+      await room.connect(fresh.serverUrl, fresh.token, { autoSubscribe: true });
+    }
     if (this.closed) { room.disconnect(); return; }
     this.emit('state', 'connected');
     this.#countViewers();

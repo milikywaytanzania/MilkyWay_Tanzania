@@ -126,7 +126,9 @@ class CallScreen {
     } catch (error) {
       if (this.closed) return;
       console.warn('[call] connect failed', error);
-      toast(error?.message ? `${t('callFailed')}: ${error.message}` : t('callFailed'));
+      // LiveKit's own wording ("could not establish signal connection: invalid API key") means nothing to people.
+      const raw = String(error?.message || '');
+      toast(/signal|api key|websocket|token/i.test(raw) ? t('callServiceError') : raw ? `${t('callFailed')}: ${raw}` : t('callFailed'));
       this.hangUp('disconnected');
     }
   }
