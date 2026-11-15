@@ -49,9 +49,10 @@ function liveChrome({ host = false } = {}) {
     micBtn, camBtn,
     host ? null : h('button', { class: 'icon-btn leave', type: 'button', 'data-act': 'leave-stage', 'aria-label': t('leaveStage'), title: t('leaveStage'), html: icon.leave }));
   const guestsBadge = h('span', { class: 'live-badge-count', hidden: true });
-  // Viewers: a labelled pill so joining as a guest is obvious (Request to join → Requested → on stage).
+  // Viewers: a labelled pill in the bottom bar so joining as a guest is always obvious
+  // (Request to join → Requested → on stage). It is never replaced by a view-only layout.
   const stageLabel = h('span', { class: 'stage-label' }, t('requestJoin'));
-  const stageBtn = h('button', { class: 'live-join-btn', type: 'button', 'data-act': 'stage', 'data-no-swipe': true, 'aria-label': t('requestJoin'), hidden: true },
+  const stageBtn = h('button', { class: 'live-join-btn', type: 'button', 'data-act': 'stage', 'data-no-swipe': true, 'aria-label': t('requestJoin'), title: t('requestJoin') },
     h('span', { class: 'stage-icon', html: icon.guests, 'aria-hidden': 'true' }), stageLabel);
   const giftBtn = h('button', { class: 'icon-btn gift', type: 'button', 'data-act': 'gift', 'aria-label': t('gift'), html: icon.gift });
   const likeBtn = h('button', { class: 'icon-btn like', type: 'button', 'data-act': 'like', 'aria-label': 'Like', html: icon.heart });
@@ -60,12 +61,12 @@ function liveChrome({ host = false } = {}) {
       ? [h('button', { class: 'icon-btn has-badge', type: 'button', 'data-act': 'guests', 'aria-label': t('guests'), title: t('guests'), html: icon.guests }, guestsBadge),
          h('button', { class: 'icon-btn', type: 'button', 'data-act': 'moderation', 'aria-label': t('moderation'), title: t('moderation'), html: icon.shield }),
          h('button', { class: 'icon-btn', type: 'button', 'data-act': 'settings', 'aria-label': t('liveSettings'), title: t('liveSettings'), html: icon.gear })]
-      : [giftBtn, likeBtn]),
+      : [stageBtn, giftBtn, likeBtn]),
     h('button', { class: 'icon-btn', type: 'button', 'data-act': 'share', 'aria-label': t('share'), html: icon.share }));
   const top = h('div', { class: 'live-top' },
     h('div', { class: 'live-host', 'data-act': 'profile' }, avatarNode, h('div', {}, name, h('small', { class: 'live-tag' }, t('live'))), host ? null : follow),
     viewers, close);
-  const node = h('section', { class: 'slide live-slide' }, grid, brandMark('live'), h('div', { class: 'shade' }), top, tools, pinned, comments, hearts, banner, state, host ? requests : stageBtn, bar);
+  const node = h('section', { class: 'slide live-slide' }, grid, brandMark('live'), h('div', { class: 'shade' }), top, tools, pinned, comments, hearts, banner, state, host ? requests : null, bar);
   node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), viewersWrap: viewers, cover, stage, guests, grid, hostLabel, requests, pinned, comments, hearts, banner, state, input, form, tools, micBtn, camBtn, stageBtn, stageLabel, giftBtn, likeBtn, guestsBadge };
   // Re-arrange the grid whenever a guest tile appears or leaves (tiles come from both room status and video tracks).
   new MutationObserver(() => layoutGrid(node)).observe(guests, { childList: true });
@@ -73,12 +74,14 @@ function liveChrome({ host = false } = {}) {
 }
 
 /** Sizes the video grid to the number of people on stage: 1 = full screen, 2 = side by side, 3 = host + 2 stacked,
- *  4 = 2×2, 5–6 = 3×2 (host taller), 7–9 = 3×3. Audio LIVEs keep their avatar seats. */
+ *  4 = 2×2, 5–6 = 3×2, 7–9 = 3×3, 10+ = 4 columns. Audio LIVEs keep their avatar seats.
+ *  The slide carries the same count so the comments and pinned comment sit below the grid instead of over faces. */
 function layoutGrid(slide) {
   const r = slide._refs;
-  const tiles = 1 + r.guests.childElementCount;
-  r.grid.dataset.tiles = String(Math.min(tiles, 10));
-  slide.classList.toggle('has-guests', tiles > 1);
+  const tiles = String(Math.min(1 + r.guests.childElementCount, 10));
+  if (r.grid.dataset.tiles !== tiles) r.grid.dataset.tiles = tiles;
+  if (slide.dataset.tiles !== tiles) slide.dataset.tiles = tiles;
+  slide.classList.toggle('has-guests', tiles !== '1');
 }
 
 function paintLive(slide, live) {
@@ -100,15 +103,23 @@ function resetStage(slide) {
   r.state.hidden = true;
   r.cover.hidden = false;
   r.pinned.hidden = true;
-  r.stageBtn.hidden = true;
+  r.stageBtn.hidden = false;
+  r.stageBtn.disabled = false;
   r.stageBtn.className = 'live-join-btn';
+  r.stageLabel.textContent = t('requestJoin');
+  r.stageBtn.setAttribute('aria-label', t('requestJoin'));
+  r.stageBtn.title = t('requestJoin');
+  r.grid.dataset.tiles = '1';
+  slide.dataset.tiles = '1';
+  slide.classList.remove('has-guests');
   r.requests.hidden = true;
   r.requests.replaceChildren();
   slide._lastState = null;
   r.input.disabled = false;
   r.input.placeholder = t('sayHi');
   r.viewersWrap.hidden = false;
-  slide.classList.remove('has-video', 'on-stage', 'can-request');
+  slide.classList.remove('has-video', 'on-stage');
+  slide.classList.toggle('can-request', !slide.classList.contains('host-stage'));
 }
 
 const cssId = value => String(value).replace(/[^a-z0-9-]/gi, '');
@@ -153,7 +164,10 @@ function applyRoom(slide, session, status) {
     const seated = self.state === 'speaker';
     const pending = self.state === 'pending';
     const canAsk = settings.admission !== 'broadcast' && settings.allowRequests !== false;
-    r.stageBtn.hidden = seated || (!canAsk && !pending && !self.invited);
+    // Every viewer who is not already on stage sees the button. When the host is not taking requests it stays
+    // visible (dimmed) and tapping it explains why, instead of silently switching to a view-only layout.
+    r.stageBtn.hidden = seated;
+    r.stageBtn.classList.toggle('closed', !canAsk && !pending && !self.invited);
     r.stageBtn.classList.toggle('pending', pending);
     r.stageBtn.classList.toggle('invited', !!self.invited && !pending);
     const label = pending ? t('requested') : self.invited ? t('joinAsGuest') : settings.admission === 'direct' ? t('joinAsGuest') : t('requestJoin');
@@ -197,7 +211,7 @@ function renderRequests(slide, status) {
   r.requests.hidden = !pending.length;
   if (!pending.length) { r.requests.replaceChildren(); return; }
   const busy = slide._approving || new Set();
-  const seats = Math.max(1, (settings.layout || 4) - 1);
+  const seats = Math.max(1, (settings.layout || 9) - 1);
   const onStage = (status.members || []).filter(member => member.state === 'speaker').length;
   const full = onStage >= seats;
   r.requests.replaceChildren(

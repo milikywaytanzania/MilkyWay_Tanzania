@@ -159,7 +159,7 @@ export class HostControls {
     const stage = people.filter(person => person.state === 'speaker');
     const requests = people.filter(person => person.state === 'pending' && !person.invited && !person.blocked);
     const invited = people.filter(person => person.invited && person.state !== 'speaker');
-    const seats = Math.max(1, Math.min(MAX_SEATS, (settings.layout || 4) - 1));
+    const seats = Math.max(1, Math.min(MAX_SEATS, (settings.layout || 9) - 1));
     const seatLabel = h('b', {}, `${stage.length}/${seats}`);
     const setSeats = next => {
       const value = Math.max(1, Math.min(MAX_SEATS, next));

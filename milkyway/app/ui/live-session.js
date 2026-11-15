@@ -297,7 +297,7 @@ export class LiveSession extends Emitter {
     if (this.published) { this.refresh(); return; } // reconnecting: the host's current settings stay as they are
     this.published = true;
     // Starting settings chosen in the Go LIVE sheet (guests, comments); everything else keeps its defaults.
-    const initial = { layout: 4, admission: 'approval', order: [], ...(this.live.initialSettings || {}) };
+    const initial = { layout: 9, admission: 'approval', order: [], ...(this.live.initialSettings || {}) };
     api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'settings', ...initial } })
       .then(result => { if (result?.settings) this.status = { ...(this.status || {}), settings: result.settings }; this.refresh(); })
       .catch(() => {});
@@ -316,10 +316,19 @@ export class LiveSession extends Emitter {
         // reconnecting): ask the server to grant them again, at most every 8 s.
         if (Date.now() - (this.regrantAt || 0) > 8000) {
           this.regrantAt = Date.now();
+          this.regrantTries = (this.regrantTries || 0) + 1;
+          // Still a subscriber after two re-grants: rejoin once with a fresh token, which the server signs with
+          // camera + microphone rights for seated guests, so the upgrade to publisher always happens.
+          if (this.regrantTries > 2 && !this.stageRejoined) {
+            this.stageRejoined = true;
+            setTimeout(() => { if (!this.closed) this.reconnect().catch(error => this.emit('error', error)); }, 0);
+            return;
+          }
           api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'request' } }).catch(() => {});
         }
         return;
       }
+      if (seated) this.regrantTries = 0;
       if (seated) {
         if (!this.onStage) {
           this.onStage = true;

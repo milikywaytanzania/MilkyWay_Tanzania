@@ -265,7 +265,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-host-cell { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .live-cell-name { display: none; }
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) {
-  inset: auto 4px auto 4px; top: calc(60px + env(safe-area-inset-top)); height: var(--grid-h, 58%); }
+  inset: auto 4px auto 4px; top: var(--grid-top); }
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-guests { display: contents; }
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-host-cell,
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-guest {
@@ -279,38 +279,66 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-cover-avatar { transform: scale(.6); }
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-cover-title,
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-cover .live-badge { display: none; }
-.live-grid[data-tiles="2"] { --grid-h: min(52%, 68vw); grid-template: 1fr / 1fr 1fr; }
-.live-grid[data-tiles="3"] { --grid-h: min(58%, 92vw); grid-template: 1fr 1fr / 1fr 1fr; }
+/* Grid height per head count lives on the slide, so comments and the pinned comment can start right below the grid.
+   Every template has exactly enough cells for its tiles (host spans included), so no tile spills into a hidden row. */
+.live-slide { --grid-top: calc(60px + env(safe-area-inset-top)); --grid-h: 58%; }
+.live-slide[data-tiles="2"] { --grid-h: min(52%, 68vw); }
+.live-slide[data-tiles="3"] { --grid-h: min(58%, 92vw); }
+.live-slide[data-tiles="4"] { --grid-h: min(58%, 100vw); }
+.live-slide[data-tiles="5"], .live-slide[data-tiles="6"] { --grid-h: min(56%, 90vw); }
+.live-slide[data-tiles="7"], .live-slide[data-tiles="8"], .live-slide[data-tiles="9"] { --grid-h: min(60%, 100vw); }
+.live-slide[data-tiles="10"] { --grid-h: 60%; }
+/* Always leave room for at least a few comments and the bottom bar under the grid. */
+.live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) { height: min(var(--grid-h), calc(100% - var(--grid-top) - 210px)); }
+.live-grid[data-tiles="2"] { grid-template: 1fr / 1fr 1fr; }
+.live-grid[data-tiles="3"] { grid-template: 1fr 1fr / 1fr 1fr; }
 .live-grid[data-tiles="3"] .live-host-cell { grid-row: span 2; }
-.live-grid[data-tiles="4"] { --grid-h: min(58%, 110vw); grid-template: 1fr 1fr / 1fr 1fr; }
-.live-grid[data-tiles="5"] { --grid-h: min(56%, 90vw); grid-template: 1fr 1fr / repeat(3, 1fr); }
+.live-grid[data-tiles="4"] { grid-template: 1fr 1fr / 1fr 1fr; }
+.live-grid[data-tiles="5"] { grid-template: 1fr 1fr / repeat(3, 1fr); }
 .live-grid[data-tiles="5"] .live-host-cell { grid-row: span 2; }
-.live-grid[data-tiles="6"] { --grid-h: min(56%, 90vw); grid-template: 1fr 1fr / repeat(3, 1fr); }
-.live-grid[data-tiles="7"] { --grid-h: min(62%, 110vw); grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
-.live-grid[data-tiles="7"] .live-host-cell { grid-row: span 2; grid-column: span 2; }
-.live-grid[data-tiles="8"] { --grid-h: min(62%, 110vw); grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
-.live-grid[data-tiles="8"] .live-host-cell { grid-row: span 2; }
-.live-grid[data-tiles="9"] { --grid-h: min(62%, 110vw); grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
-.live-grid[data-tiles="10"] { --grid-h: min(62%, 110vw); grid-template: repeat(3, 1fr) / repeat(4, 1fr); }
-.live-grid[data-tiles="10"] .live-host-cell { grid-row: span 2; grid-column: span 2; }
-.live-slide.has-guests:not(.audio-live) .live-comments { max-height: 26%; }
-.live-slide.has-guests:not(.audio-live) .live-pinned { top: auto; bottom: calc(70px + 27%); }
+.live-grid[data-tiles="6"] { grid-template: 1fr 1fr / repeat(3, 1fr); }
+.live-grid[data-tiles="7"] { grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
+.live-grid[data-tiles="7"] .live-host-cell { grid-column: span 3; }
+.live-grid[data-tiles="8"] { grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
+.live-grid[data-tiles="8"] .live-host-cell { grid-column: span 2; }
+.live-grid[data-tiles="9"] { grid-template: repeat(3, 1fr) / repeat(3, 1fr); }
+.live-grid[data-tiles="10"] { grid-template-columns: repeat(4, 1fr); grid-template-rows: none; grid-auto-rows: minmax(0, 1fr); }
+.live-grid[data-tiles="10"] .live-host-cell { grid-column: span 2; grid-row: span 2; }
+.live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-stage .live-track,
+.live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-guest .live-track { object-fit: cover; object-position: 50% 30%; }
+/* With guests: comments fill the space between the grid and the bottom bar, never over the tiles. */
+.live-slide.has-guests:not(.audio-live) .live-comments {
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 8px); max-height: none; }
+.live-slide.has-guests:not(.audio-live) .live-pinned {
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 6px); bottom: auto; right: 10px; }
+.live-slide.has-guests:not(.audio-live):has(.live-pinned:not([hidden])) .live-comments {
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 50px); }
+.live-slide.has-guests:not(.audio-live) .live-gift-banner { bottom: auto; top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 8px); }
 .live-slide.has-guests:not(.audio-live) .mw-mark--live { opacity: .5; }
+/* Stream controls turn into a row above the bar so the column never covers the bottom-right tile. */
+.live-slide.has-guests:not(.audio-live) .live-tools { bottom: 62px; flex-direction: row; right: 10px; gap: 8px; }
+.live-slide.has-guests:not(.audio-live):is(.host-stage, .on-stage) .live-comments { bottom: 112px; }
 @keyframes tileIn { from { opacity: 0; transform: scale(.94); } }
 
-/* Viewer: labelled "Request to join" pill */
-.live-join-btn { position: absolute; z-index: 3; right: 10px; bottom: 64px; display: inline-flex; align-items: center; gap: 6px; max-width: 52%;
-  padding: 8px 14px 8px 10px; border-radius: 99px; font: inherit; font-size: 13px; font-weight: 800; color: #fff; cursor: pointer;
+/* Viewer: labelled "Request to join" pill, always in the bottom bar */
+.live-join-btn { flex: 0 1 auto; min-width: 40px; height: 40px; display: inline-flex; align-items: center; gap: 6px; max-width: 46%;
+  padding: 0 12px 0 10px; border-radius: 99px; font: inherit; font-size: 13px; font-weight: 800; color: #fff; cursor: pointer;
   background: linear-gradient(135deg, var(--nebula), var(--electric)); box-shadow: var(--glow); border: 1px solid rgba(255,255,255,.25); }
+.live-join-btn[hidden] { display: none; }
 .live-join-btn .stage-icon { flex: none; width: 18px; height: 18px; display: grid; place-items: center; }
 .live-join-btn .stage-icon svg { width: 18px; height: 18px; fill: currentColor; }
-.live-join-btn .stage-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-join-btn .stage-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-join-btn.pending { background: rgba(0,0,0,.55); color: #ffc93c; border-color: rgba(255,201,60,.55); animation: livePulse 1.6s ease-in-out infinite; }
 .live-join-btn.invited { animation: livePulse 1.6s ease-in-out infinite; }
+.live-join-btn.closed { background: rgba(0,0,0,.45); box-shadow: none; opacity: .75; }
 .live-join-btn:disabled { opacity: .6; }
 .live-join-btn:active { transform: scale(.97); }
-.live-slide.can-request .live-comments { right: max(30%, 170px); }
-.live-slide.can-request .live-hearts { bottom: 108px; }
+.live-slide.can-request .live-form { flex: 1 1 90px; }
+@media (max-width: 380px) {
+  .live-join-btn { padding: 0 10px; font-size: 12px; }
+  .live-slide.can-request .live-bar { gap: 6px; }
+}
+@media (max-width: 340px) { .live-join-btn .stage-label { display: none; } }
 
 /* Host: real-time guest request panel */
 .live-requests { position: absolute; z-index: 4; left: 10px; top: calc(64px + env(safe-area-inset-top)); width: min(300px, calc(100% - 84px));

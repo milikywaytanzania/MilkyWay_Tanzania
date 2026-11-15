@@ -3,7 +3,7 @@
 import { isUuid } from './supa.js';
 
 export const LIVE_DEFAULTS = Object.freeze({
-  layout: 3, admission: 'approval', layoutStyle: 'fullscreen', hostPosition: 'start', mobileLayout: 'stack', featuredId: null, order: [],
+  layout: 9, admission: 'approval', layoutStyle: 'fullscreen', hostPosition: 'start', mobileLayout: 'stack', featuredId: null, order: [],
   comments: 'everyone', slowMode: 0, filterWords: [], filterLinks: false,
   giftsEnabled: true, likesEnabled: true, showViewerCount: true, allowRequests: true,
   mutedIds: [], blockedIds: [], invites: {}, pinned: null,
