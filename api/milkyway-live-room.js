@@ -82,7 +82,7 @@ function publicSettings(settings, userId) {
   return { ...rest, filterWordCount: filterWords.length, invited: !!freshInvites(invites)[userId] };
 }
 
-async function status(ctx, room) {
+async function status(ctx, room, { enter = false } = {}) {
   const me = await whoAmI(ctx);
   const [settings, rows, messages, connected] = await Promise.all([
     loadSettings(ctx, room.roomName),
@@ -96,6 +96,14 @@ async function status(ctx, room) {
   if (!room.host && !own) {
     await upsertMember(ctx, room.roomName, ctx.user.id, { name: me.name, avatar: me.avatar, state: 'viewer' }).catch(() => {});
     own = { room_name: room.roomName, user_id: ctx.user.id, name: me.name, avatar: me.avatar, state: 'viewer', host_muted: false };
+  } else if (!room.host && enter && own.state !== 'viewer') {
+    // Every visit starts as a subscriber: a seat or request left from an earlier visit is cleared, and the guest asks
+    // again with "Request to join". LiveKit rights are revoked too in case an old connection is still around.
+    await upsertMember(ctx, room.roomName, ctx.user.id, { state: 'viewer', host_muted: false }).catch(() => {});
+    if (own.state === 'speaker') await setPublish(room.roomName, ctx.user.id, false, room.audio).catch(() => {});
+    own = { ...own, state: 'viewer', host_muted: false };
+    const i = (rows || []).findIndex(row => row.user_id === ctx.user.id);
+    if (i >= 0) rows[i] = { ...rows[i], state: 'viewer', host_muted: false };
   }
   if (room.host && !(await ctx.rest(`mw_live_room_settings?room_name=eq.${enc(room.roomName)}&select=room_name&limit=1`).catch(() => [null]))?.length) {
     await ctx.rest('mw_live_room_settings', { method: 'POST', prefer: 'resolution=ignore-duplicates', body: { room_name: room.roomName, host_id: ctx.user.id, settings: DEFAULTS } }).catch(() => {});
@@ -157,7 +165,7 @@ async function handle({ ctx, body, method }) {
   const target = () => requireUuid(typeof body.target === 'string' ? body.target.toLowerCase() : '', 'participant');
   const me = ctx.user.id.toLowerCase();
 
-  if (action === 'status') return status(ctx, room);
+  if (action === 'status') return status(ctx, room, { enter: body.enter === true });
   if (action === 'started') return { ok: true };
   if (!room.record.is_live && action !== 'end') throw new ApiError(404, 'This Live session has ended.');
 

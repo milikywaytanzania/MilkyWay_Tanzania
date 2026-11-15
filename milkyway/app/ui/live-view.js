@@ -480,7 +480,11 @@ export class LiveView {
       if (this.session && slide === this.activeSlide && streamControl(act, this.session, button, slide)) return;
       if (act === 'retry') { if (slide === this.pager.slideAt(this.pager.index)) { this.#leave(); this.#join(); } }
       else if (act === 'close') this.hooks.onClose();
-      else if (act === 'stage') { if (this.hooks.requireLogin() && this.session) this.#stageRequest(); }
+      else if (act === 'stage') {
+        // The button is in the bar from the first frame; until the room is connected a tap just says so.
+        if (!this.hooks.requireLogin()) return;
+        if (this.session && slide === this.activeSlide) this.#stageRequest(); else toast(t('joining'));
+      }
       else if (act === 'leave-stage') { this.session?.leaveStage().catch(error => toast(error.message)); }
       else if (act === 'guest') {
         // Viewers: a guest box opens that guest's profile.

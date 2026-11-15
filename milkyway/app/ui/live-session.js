@@ -46,12 +46,14 @@ async function directToken(body) {
   return payload;
 }
 
-async function fetchToken(live, host, { direct = false } = {}) {
+// Viewers always enter as subscribers (no camera / mic rights). Only `rejoin` — reconnecting inside the same visit,
+// e.g. after a network drop while seated on stage — lets the server sign publish rights for an approved guest.
+async function fetchToken(live, host, { direct = false, rejoin = false } = {}) {
   const cached = tokenCache.get(live.room);
-  if (!direct && !host && cached && Date.now() - cached.at < 60_000) return cached.payload;
+  if (!direct && !host && !rejoin && cached && Date.now() - cached.at < 60_000) return cached.payload;
   const body = {
     room: live.room, roomName: live.room, identity: auth.userId, name: auth.name, participantName: auth.name,
-    role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token',
+    role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token', ...(rejoin && !host ? { rejoin: true } : {}),
   };
   let payload;
   if (direct) payload = await directToken(body);
@@ -86,6 +88,7 @@ export class LiveSession extends Emitter {
     this.status = null;      // last /live-room status: settings, self, members, messages
     this.onStage = false;    // a guest currently publishing
     this.approving = new Set();
+    this.entered = false;    // true after the first connection of this visit; later joins are reconnects
   }
 
   get settings() { return this.status?.settings || {}; }
@@ -95,8 +98,10 @@ export class LiveSession extends Emitter {
   async join() {
     this.emit('state', 'connecting');
     if (!this.channel) this.#openRealtime(); // in parallel; never blocks the video
-    this.#loadHistory();
-    const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host)]);
+    const rejoin = this.entered;
+    // A fresh visit clears any seat or request left over from an earlier visit, so the viewer starts as a subscriber.
+    this.#loadHistory({ enter: !rejoin && !this.host });
+    const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host, { rejoin })]);
     if (this.closed) return;
     const { Room, RoomEvent, Track } = sdk;
     const room = new Room({
@@ -151,12 +156,13 @@ export class LiveSession extends Emitter {
       // "invalid API key": this host signed with a key LiveKit does not know, so asking it again cannot help. The
       // Supabase function signs with the LiveKit project's own secrets. An expired token just needs a fresh one.
       let fresh;
-      if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true }); } catch {} }
-      fresh ||= await fetchToken(this.live, this.host);
+      if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true, rejoin }); } catch {} }
+      fresh ||= await fetchToken(this.live, this.host, { rejoin });
       if (this.closed) return;
       await room.connect(fresh.serverUrl, fresh.token, { autoSubscribe: true });
     }
     if (this.closed) { room.disconnect(); return; }
+    this.entered = true;
     this.emit('state', 'connected');
     this.#countViewers();
     if (!this.host && ![...room.remoteParticipants.values()].some(p => p.identity === this.live.host.id)) {
@@ -480,13 +486,13 @@ export class LiveSession extends Emitter {
     else if (event.t === 'decline' && this.host && event.uid) this.control('cancel-invite', { target: event.uid }, { quiet: true }).then(() => this.emit('declined', event.uid)).catch(() => {});
   }
 
-  async #loadHistory() {
+  async #loadHistory({ enter = false } = {}) {
     if (!auth.signedIn() || this.closed) return;
     if (this.loadingHistory) { this.loadAgain = true; return; } // one more read right after the current one
     this.loadingHistory = true;
     this.loadAgain = false;
     try {
-      const status = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'status' }, timeout: 10000 });
+      const status = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'status', ...(enter ? { enter: true } : {}) }, timeout: 10000 });
       if (this.closed || !status) return;
       const before = this.status;
       this.status = status;

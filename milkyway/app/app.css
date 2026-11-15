@@ -183,6 +183,15 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 
 /* ---- LIVE --------------------------------------------------------------------------------------------------- */
 .live-view { background: transparent; inset: 0 0 var(--nav-h) 0; }
+/* Live room only: bottom spacing that keeps the bar (chat, gifts, likes, Request to join) clear of the device's system
+   navigation bar. Uses the browser's safe-area inset and, on Android WebViews that report 0, the inset Capacitor injects
+   as --safe-area-inset-bottom. Viewers sit above the app's own bottom nav (which already includes env()), so they only
+   add what that nav missed; the full-screen host stage takes the whole inset plus a floor for 3-button / gesture nav. */
+.live-slide {
+  --live-sys-inset: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --live-lift: calc(14px + max(0px, var(--safe-area-inset-bottom, 0px) - env(safe-area-inset-bottom, 0px)));
+}
+.live-slide.host-stage { --live-lift: calc(14px + max(var(--live-sys-inset), 24px)); }
 .live-slide { background: url("../galaxy-starfield.svg") 0 0 / 480px 560px, radial-gradient(120% 70% at 50% 0%, #2d1a78 0%, var(--midnight) 55%, var(--void) 100%); }
 .live-cover { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; }
 .live-cover-title { margin: 0; font-weight: 700; max-width: 80%; text-align: center; }
@@ -201,14 +210,14 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-viewers { margin-left: auto; display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 99px; background: rgba(0,0,0,.35); font-size: 12.5px; }
 .live-close { font-size: 22px; background: rgba(0,0,0,.35); width: 34px; height: 34px; }
 .host-stage .live-close { width: auto; padding: 0 14px; border-radius: 99px; font-size: 13px; font-weight: 700; background: var(--accent); }
-.live-comments { position: absolute; z-index: 2; left: 10px; right: 30%; bottom: 66px; max-height: 34%; overflow-y: auto; display: grid; align-content: end; gap: 6px;
+.live-comments { position: absolute; z-index: 2; left: 10px; right: 30%; bottom: calc(56px + var(--live-lift)); max-height: 34%; overflow-y: auto; display: grid; align-content: end; gap: 6px;
   scrollbar-width: none; -webkit-mask-image: linear-gradient(transparent, #000 22%); mask-image: linear-gradient(transparent, #000 22%); touch-action: pan-y; }
 .live-comments::-webkit-scrollbar { display: none; }
 .live-comments p { margin: 0; justify-self: start; padding: 5px 10px; border-radius: 14px; background: rgba(0,0,0,.32); font-size: 13.5px; overflow-wrap: anywhere; animation: rise .22s var(--ease); }
 .live-comments p b { color: #c9bfff; font-weight: 700; }
 .live-comments p.mine b { color: var(--accent-2); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-.live-hearts { position: absolute; z-index: 2; right: 18px; bottom: 70px; width: 60px; height: 50%; pointer-events: none; }
+.live-hearts { position: absolute; z-index: 2; right: 18px; bottom: calc(60px + var(--live-lift)); width: 60px; height: 50%; pointer-events: none; }
 .float-heart { position: absolute; bottom: 0; left: 18px; font-size: 28px; color: hsl(var(--hue) 95% 62%); animation: float var(--d) ease-out forwards; }
 @keyframes float { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 15% { opacity: 1; transform: translate(0, -20px) scale(1.1); }
   100% { opacity: 0; transform: translate(var(--x), -260px) scale(.8); } }
@@ -221,7 +230,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 @keyframes giftIn { from { opacity: 0; transform: translateX(-60px); } }
 @keyframes giftPop { 50% { transform: scale(1.5) rotate(-8deg); } }
 .live-state { position: absolute; z-index: 4; left: 50%; top: 68%; transform: translate(-50%, -50%); padding: 10px 18px; border-radius: 99px; background: rgba(0,0,0,.6); font-weight: 600; text-align: center; }
-.live-bar { position: absolute; z-index: 3; inset: auto 0 0; padding: 10px; display: flex; gap: 8px; align-items: center; }
+.live-bar { position: absolute; z-index: 3; inset: auto 0 0; padding: 10px 10px var(--live-lift); display: flex; gap: 8px; align-items: center; }
 .live-form { flex: 1; min-width: 0; }
 .live-input { width: 100%; height: 40px; border-radius: 99px; border: 0; padding: 0 16px; font: inherit; color: #fff; background: rgba(255,255,255,.16); outline: none; }
 .live-input::placeholder { color: rgba(255,255,255,.65); }
@@ -246,7 +255,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .audio-live .live-guest { width: auto; height: 96px; }
 .audio-live .live-video-only { display: none; }
 
-.live-tools { position: absolute; z-index: 3; right: 10px; bottom: 70px; display: none; flex-direction: column; gap: 10px; }
+.live-tools { position: absolute; z-index: 3; right: 10px; bottom: calc(60px + var(--live-lift)); display: none; flex-direction: column; gap: 10px; }
 .host-stage .live-tools, .live-slide.on-stage .live-tools { display: flex; }
 .live-tools .icon-btn { background: rgba(0,0,0,.38); }
 .live-tools .icon-btn.off { color: #ff6b8b; }
@@ -289,7 +298,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-slide[data-tiles="7"], .live-slide[data-tiles="8"], .live-slide[data-tiles="9"] { --grid-h: min(60%, 100vw); }
 .live-slide[data-tiles="10"] { --grid-h: 60%; }
 /* Always leave room for at least a few comments and the bottom bar under the grid. */
-.live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) { height: min(var(--grid-h), calc(100% - var(--grid-top) - 210px)); }
+.live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) { height: min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))); }
 .live-grid[data-tiles="2"] { grid-template: 1fr / 1fr 1fr; }
 .live-grid[data-tiles="3"] { grid-template: 1fr 1fr / 1fr 1fr; }
 .live-grid[data-tiles="3"] .live-host-cell { grid-row: span 2; }
@@ -308,16 +317,16 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-guest .live-track { object-fit: cover; object-position: 50% 30%; }
 /* With guests: comments fill the space between the grid and the bottom bar, never over the tiles. */
 .live-slide.has-guests:not(.audio-live) .live-comments {
-  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 8px); max-height: none; }
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))) + 8px); max-height: none; }
 .live-slide.has-guests:not(.audio-live) .live-pinned {
-  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 6px); bottom: auto; right: 10px; }
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))) + 6px); bottom: auto; right: 10px; }
 .live-slide.has-guests:not(.audio-live):has(.live-pinned:not([hidden])) .live-comments {
-  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 50px); }
-.live-slide.has-guests:not(.audio-live) .live-gift-banner { bottom: auto; top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 210px)) + 8px); }
+  top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))) + 50px); }
+.live-slide.has-guests:not(.audio-live) .live-gift-banner { bottom: auto; top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))) + 8px); }
 .live-slide.has-guests:not(.audio-live) .mw-mark--live { opacity: .5; }
 /* Stream controls turn into a row above the bar so the column never covers the bottom-right tile. */
-.live-slide.has-guests:not(.audio-live) .live-tools { bottom: 62px; flex-direction: row; right: 10px; gap: 8px; }
-.live-slide.has-guests:not(.audio-live):is(.host-stage, .on-stage) .live-comments { bottom: 112px; }
+.live-slide.has-guests:not(.audio-live) .live-tools { bottom: calc(52px + var(--live-lift)); flex-direction: row; right: 10px; gap: 8px; }
+.live-slide.has-guests:not(.audio-live):is(.host-stage, .on-stage) .live-comments { bottom: calc(102px + var(--live-lift)); }
 @keyframes tileIn { from { opacity: 0; transform: scale(.94); } }
 
 /* Viewer: labelled "Request to join" pill, always in the bottom bar */

@@ -67,7 +67,9 @@ async function liveToken(req, res, body) {
       }
     }
     const audio = /^mw-audio-/i.test(room);
-    const seated = !isHost && member?.state === 'speaker';
+    // Viewers enter strictly as subscribers. Publish rights in a token only go to a guest the host already seated
+    // who is reconnecting within the same visit; on stage, rights are granted live by the Live room API instead.
+    const seated = !isHost && body.rejoin === true && member?.state === 'speaker';
     const sources = isHost || seated ? (audio ? (seated && member.host_muted ? [] : [MIC]) : (seated && member.host_muted ? [CAMERA] : [CAMERA, MIC])) : [];
     const name = String(profile?.display_name || profile?.username || body.name || 'MilkyWay user').slice(0, 80);
     const token = accessToken({
