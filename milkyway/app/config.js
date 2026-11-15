@@ -33,7 +33,7 @@ const defaults = {
     uploadPreset: '',
   },
   media: {
-    // 'auto' → Cloudinary if configured, else Netlify Image CDN on Netlify hosts, else original files.
+    // 'auto' → Cloudinary if configured, else Cloudflare Image Resizing on Cloudflare Pages hosts, else original files.
     imageCdn: 'auto',
   },
   api: {

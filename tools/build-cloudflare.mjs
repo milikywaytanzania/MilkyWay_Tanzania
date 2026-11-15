@@ -1,5 +1,5 @@
 // Builds the static site for Cloudflare Pages into dist/. Mirrors what server.js exposes: only public web assets,
-// never SQL, notes, sources or tooling. The /api routes are served by functions/api/[name].js.
+// never SQL, notes, sources or tooling. The /api routes are served by functions/api/_middleware.js.
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +37,7 @@ copyFileSync(join(downloads, 'MilkyWay.apk'), join(downloads, versionedApk));
 writeFileSync(join(downloads, 'version.json'), `${JSON.stringify({ ...release, apk: `/milkyway/download/${versionedApk}` }, null, 2)}\n`);
 
 // Pages from the old MilkyWay app were removed. Saved links, bookmarks and old notifications that still
-// point at them open the new app instead of an error page. (Same file format on Cloudflare Pages and Netlify.)
+// point at them open the new app instead of an error page.
 writeFileSync(join(out, '_redirects'), [
   '/milkyway/classic.html /milkyway/ 301',
   '/milkyway/classic /milkyway/ 301',
@@ -62,6 +62,8 @@ writeFileSync(join(out, '_headers'), `/*
   Cache-Control: no-cache
 /*.webmanifest
   Cache-Control: no-cache
+/milkyway/app/*
+  Cache-Control: public, max-age=0, must-revalidate
 /milkyway/download/version.json
   Cache-Control: no-cache
 /milkyway/download/MilkyWay.apk

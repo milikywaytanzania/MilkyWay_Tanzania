@@ -1,5 +1,5 @@
 // Runs the Express-style api/<name>.js handlers (req, res) from a Fetch Request and returns a Fetch Response.
-// Shared by the Netlify Function (functions/milkyway-api.mjs) and the Cloudflare Pages Function (functions/api/[name].js).
+// Used by the Cloudflare Pages Function (functions/api/_middleware.js) that serves /api/<name>.
 import account from '../milkyway-account.js';
 import call from '../milkyway-call.js';
 import discovery from '../milkyway-discovery.js';

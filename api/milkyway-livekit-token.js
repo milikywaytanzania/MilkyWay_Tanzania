@@ -73,7 +73,7 @@ async function liveToken(req, res, body) {
       identity: me, name, room, canPublish: sources.length > 0, sources,
       metadata: JSON.stringify({ avatar: String(profile?.avatar_url || '').slice(0, 500) }),
     });
-    return res.status(200).json({ contractVersion: 2, token, serverUrl: livekitUrl(), roomName: room, room, service: 'netlify' });
+    return res.status(200).json({ contractVersion: 2, token, serverUrl: livekitUrl(), roomName: room, room, service: 'cloudflare' });
   } catch (error) {
     return res.status(error?.status && error.status < 500 ? error.status : 503).json({ error: error?.message || 'LIVE service is unavailable right now.' });
   }
