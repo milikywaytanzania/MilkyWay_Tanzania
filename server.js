@@ -46,11 +46,16 @@ app.use((request, response, next) => blocked.test(request.path) ? response.sendS
 
 const noCache = (response, path) => { if (/(^|[\\/])sw(-cache)?\.js$|\.webmanifest$|\.html$/.test(path)) response.setHeader('Cache-Control', 'no-cache'); };
 const options = { index: false, dotfiles: 'ignore', setHeaders: noCache, maxAge: '1h' };
+const apkHeaders = { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Disposition': 'attachment; filename="MilkyWay.apk"', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache, no-transform' };
 for (const file of ['sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder.svg', 'careers.html', 'media.html', 'sanaa.html', 'admin.html', 'privacy.html', 'account-deletion.html']) {
   app.get(`/${file}`, (_request, response) => response.sendFile(join(root, file), { headers: /\.(js|webmanifest|html)$/.test(file) ? { 'Cache-Control': 'no-cache' } : {} }));
 }
 for (const folder of ['img', 'slides']) app.use(`/${folder}`, express.static(join(root, folder), options));
-app.use('/download', express.static(join(root, 'milkyway', 'download'), options));
+app.get('/MilkyWay.apk', (_request, response) => response.sendFile(join(root, 'milkyway', 'download', 'MilkyWay.apk'), { headers: apkHeaders }));
+app.use('/download', express.static(join(root, 'milkyway', 'download'), { ...options, setHeaders(response, path) {
+  noCache(response, path);
+  if (/\.apk$/i.test(path)) for (const [name, value] of Object.entries(apkHeaders)) response.setHeader(name, value);
+} }));
 app.use('/milkyway', express.static(join(root, 'milkyway'), { ...options, index: 'index.html' }));
 app.get('/', (_request, response) => response.sendFile(join(root, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }));
 

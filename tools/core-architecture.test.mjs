@@ -73,10 +73,14 @@ test('app shell has no render-blocking scripts and loads the core as a module', 
 
 test('homepage APK download is a native static-file link', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /id="appDownload" href="\/download\/MilkyWay\.apk" download="MilkyWay\.apk"/);
+  assert.match(html, /id="appDownload" href="\/MilkyWay\.apk" download="MilkyWay\.apk"/);
   assert.doesNotMatch(html, /apk-link\.js/);
   const build = readFileSync(new URL('./build-cloudflare.mjs', import.meta.url), 'utf8');
-  assert.match(build, /copyFileSync\(join\(downloads, 'MilkyWay\.apk'\), join\(publicDownloads, 'MilkyWay\.apk'\)\)/);
+  assert.match(build, /copyFileSync\(join\(downloads, 'MilkyWay\.apk'\), join\(out, 'MilkyWay\.apk'\)\)/);
+  assert.match(build, /\/MilkyWay\.apk\n  Content-Type: application\/vnd\.android\.package-archive\n  Content-Disposition: attachment; filename="MilkyWay\.apk"\n  Accept-Ranges: bytes\n  Cache-Control: no-cache, no-transform/);
+  const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  assert.match(server, /app\.get\('\/MilkyWay\.apk'.*sendFile/);
+  assert.match(server, /'Content-Type': 'application\/vnd\.android\.package-archive'/);
 });
 
 test('public Supabase content uses DOM text nodes and validates media URLs', () => {

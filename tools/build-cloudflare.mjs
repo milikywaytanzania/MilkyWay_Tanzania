@@ -35,6 +35,7 @@ if (!Number.isInteger(release.versionCode) || !existsSync(join(downloads, 'Milky
 const publicDownloads = join(out, 'download');
 mkdirSync(publicDownloads, { recursive: true });
 copyFileSync(join(downloads, 'MilkyWay.apk'), join(publicDownloads, 'MilkyWay.apk'));
+copyFileSync(join(downloads, 'MilkyWay.apk'), join(out, 'MilkyWay.apk'));
 const versionedApk = `MilkyWay-${release.versionCode}.apk`;
 copyFileSync(join(downloads, 'MilkyWay.apk'), join(downloads, versionedApk));
 writeFileSync(join(downloads, 'version.json'), `${JSON.stringify({ ...release, apk: `/milkyway/download/${versionedApk}` }, null, 2)}\n`);
@@ -69,13 +70,20 @@ writeFileSync(join(out, '_headers'), `/*
   Cache-Control: public, max-age=0, must-revalidate
 /milkyway/download/version.json
   Cache-Control: no-cache
+/MilkyWay.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="MilkyWay.apk"
+  Accept-Ranges: bytes
+  Cache-Control: no-cache, no-transform
 /milkyway/download/MilkyWay.apk
   Content-Type: application/vnd.android.package-archive
   Content-Disposition: attachment; filename="MilkyWay.apk"
+  Accept-Ranges: bytes
   Cache-Control: public, max-age=0, must-revalidate, no-transform
 /milkyway/download/MilkyWay-*.apk
   Content-Type: application/vnd.android.package-archive
   Content-Disposition: attachment; filename="MilkyWay.apk"
+  Accept-Ranges: bytes
   Cache-Control: public, max-age=31536000, immutable, no-transform
 `);
 // The same build also deploys on Netlify: there, pictures are resized by Netlify Image CDN instead of
