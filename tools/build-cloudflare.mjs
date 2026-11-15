@@ -32,6 +32,9 @@ for (const folder of ['img', 'slides', 'milkyway']) {
 const downloads = join(out, 'milkyway', 'download');
 const release = JSON.parse(readFileSync(join(downloads, 'version.json'), 'utf8'));
 if (!Number.isInteger(release.versionCode) || !existsSync(join(downloads, 'MilkyWay.apk'))) throw new Error('milkyway/download needs MilkyWay.apk and a valid version.json.');
+const publicDownloads = join(out, 'download');
+mkdirSync(publicDownloads, { recursive: true });
+copyFileSync(join(downloads, 'MilkyWay.apk'), join(publicDownloads, 'MilkyWay.apk'));
 const versionedApk = `MilkyWay-${release.versionCode}.apk`;
 copyFileSync(join(downloads, 'MilkyWay.apk'), join(downloads, versionedApk));
 writeFileSync(join(downloads, 'version.json'), `${JSON.stringify({ ...release, apk: `/milkyway/download/${versionedApk}` }, null, 2)}\n`);

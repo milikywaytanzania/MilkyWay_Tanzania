@@ -50,6 +50,7 @@ for (const file of ['sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder
   app.get(`/${file}`, (_request, response) => response.sendFile(join(root, file), { headers: /\.(js|webmanifest|html)$/.test(file) ? { 'Cache-Control': 'no-cache' } : {} }));
 }
 for (const folder of ['img', 'slides']) app.use(`/${folder}`, express.static(join(root, folder), options));
+app.use('/download', express.static(join(root, 'milkyway', 'download'), options));
 app.use('/milkyway', express.static(join(root, 'milkyway'), { ...options, index: 'index.html' }));
 app.get('/', (_request, response) => response.sendFile(join(root, 'index.html'), { headers: { 'Cache-Control': 'no-cache' } }));
 

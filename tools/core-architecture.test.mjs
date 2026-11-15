@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import feed from '../api/milkyway-feed.js';
+import livekitToken from '../api/milkyway-livekit-token.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
@@ -68,6 +69,55 @@ test('app shell has no render-blocking scripts and loads the core as a module', 
   for (const attrs of scripts) assert.match(attrs, /type="module"/, 'every script is a deferred ES module');
   assert.match(html, /app\/main\.js/);
   assert.doesNotMatch(html, /supabase-js|livekit-client/, 'SDKs load lazily, never from the shell');
+});
+
+test('homepage APK download is a native static-file link', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="appDownload" href="\/download\/MilkyWay\.apk" download="MilkyWay\.apk"/);
+  assert.doesNotMatch(html, /apk-link\.js/);
+  const build = readFileSync(new URL('./build-cloudflare.mjs', import.meta.url), 'utf8');
+  assert.match(build, /copyFileSync\(join\(downloads, 'MilkyWay\.apk'\), join\(publicDownloads, 'MilkyWay\.apk'\)\)/);
+});
+
+test('LIVE token keeps viewers subscribed until the server records host approval', async () => {
+  const hostId = '11111111-1111-4111-8111-111111111111';
+  const viewerId = '22222222-2222-4222-8222-222222222222';
+  const room = 'mw-video-live-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const originalFetch = globalThis.fetch;
+  const previousEnv = Object.fromEntries(['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'].map(key => [key, process.env[key]]));
+  let memberState = 'pending';
+  process.env.LIVEKIT_URL = 'wss://live.example.test';
+  process.env.LIVEKIT_API_KEY = 'test-key';
+  process.env.LIVEKIT_API_SECRET = 'test-secret';
+  globalThis.fetch = async input => {
+    const address = String(input);
+    if (address.includes('/twirp/livekit.RoomService/ListRooms')) return new Response('{"rooms":[]}', { status: 200 });
+    if (address.endsWith('/auth/v1/user')) return new Response(JSON.stringify({ id: viewerId }), { status: 200 });
+    if (address.includes('/mw_video_live_sessions?')) return new Response(JSON.stringify([{ host_id: hostId, scope: 'public', is_live: true }]), { status: 200 });
+    if (address.includes('/mw_live_room_settings?')) return new Response(JSON.stringify([{ settings: {} }]), { status: 200 });
+    if (address.includes('/mw_live_room_members?')) return new Response(JSON.stringify([{ state: memberState, host_muted: false }]), { status: 200 });
+    if (address.includes('/mw_profiles?')) return new Response(JSON.stringify([]), { status: 200 });
+    throw new Error(`Unexpected LIVE token request: ${address}`);
+  };
+  const call = async body => {
+    let status = 200, payload;
+    const response = { setHeader() { return response; }, status(code) { status = code; return response; }, json(value) { payload = value; return response; } };
+    await livekitToken({ method: 'POST', headers: { authorization: 'Bearer test-user-token', apikey: 'test-public-key' }, body: { room, identity: viewerId, role: 'viewer', ...body } }, response);
+    assert.equal(status, 200);
+    return JSON.parse(Buffer.from(payload.token.split('.')[1], 'base64url').toString('utf8')).video;
+  };
+
+  try {
+    assert.equal((await call({ stage: true })).canPublish, false, 'a viewer cannot self-promote by requesting a stage token');
+    memberState = 'speaker';
+    assert.equal((await call({ stage: true })).canPublish, true, 'the server grants publishing only after the member is approved');
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test('service worker precaches every core module', () => {
