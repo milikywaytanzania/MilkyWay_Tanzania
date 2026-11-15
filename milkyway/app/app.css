@@ -124,7 +124,9 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 /* Media is pinned to the slide box: a large photo can never grow the grid row and render cropped or off-screen. */
 .media video, .media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--void); }
 .media img { cursor: zoom-in; user-select: none; -webkit-user-drag: none; }
-.media-missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.media-missing { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(50% 40% at 50% 45%, rgba(61,139,255,.12), transparent 100%), var(--void); }
+.media-missing-icon { width: 68px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid rgba(214,200,255,.18); border-radius: 50%; color: rgba(214,200,255,.68); background: rgba(13,15,46,.7); box-shadow: 0 0 28px rgba(61,139,255,.12); }
+.media-missing-icon svg { width: 28px; height: 28px; fill: currentColor; }
 .media .text-card { position: absolute; inset: 0; }
 .slide[data-fit="cover"] .media video, .slide[data-fit="cover"] .media img { object-fit: cover; }
 .text-card { padding: 32px 28px; font-size: clamp(20px, 5.4vw, 30px); font-weight: 700; line-height: 1.25; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -525,7 +527,6 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .pv-media.zoomed { display: block; overflow: auto; touch-action: pan-x pan-y; overscroll-behavior: contain; }
 .pv-media.zoomed img { position: static; width: auto; height: auto; max-width: none; max-height: none; margin: auto; cursor: zoom-out; }
 .pv-text { padding: 32px 28px; max-width: 560px; font-size: clamp(20px, 5.4vw, 28px); font-weight: 700; line-height: 1.3; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; }
-.pv-missing { padding: 24px; text-align: center; }
 .pv-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 10px); right: 10px; background: rgba(0,0,0,.45); }
 .pv-nav { position: absolute; z-index: 3; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.4); font-size: 30px; line-height: 1; }
 .pv-prev { left: 8px; }

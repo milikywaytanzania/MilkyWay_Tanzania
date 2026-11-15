@@ -13,7 +13,7 @@ import { feed, actions, deletedPosts } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
 import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
-import { h, icon, count, toast, paintAvatar, brandMark, avatar } from './dom.js';
+import { h, icon, count, toast, paintAvatar, brandMark, avatar, mediaPlaceholder } from './dom.js';
 import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } from '../data/promoted.js';
 
 const DOUBLE_TAP_MS = 260;
@@ -116,7 +116,8 @@ export class FeedView {
     const img = h('img', { alt: '', decoding: 'async', draggable: 'false' });
     const text = h('div', { class: 'text-card' });
     const paused = h('span', { class: 'paused-badge', html: icon.play, hidden: true });
-    const missing = h('p', { class: 'media-missing', hidden: true }, t('imageUnavailable'));
+    const missing = mediaPlaceholder(t('imageUnavailable'));
+    missing.hidden = true;
     const media = h('div', { class: 'media', 'data-act': 'media' }, video, img, text, missing, paused);
     const avatarNode = h('span', { class: 'avatar' });
     const follow = h('span', { class: 'follow-plus', 'data-act': 'follow', role: 'button', 'aria-label': t('follow'), html: icon.plus });
@@ -144,6 +145,15 @@ export class FeedView {
     // Portrait media fills the screen; landscape media is letterboxed instead of cropped.
     const fit = (w, h) => { if (w && h) slide.dataset.fit = h >= w * 1.2 ? 'cover' : 'contain'; };
     video.addEventListener('loadedmetadata', () => fit(video.videoWidth, video.videoHeight));
+    video.addEventListener('error', () => {
+      const post = slide._post;
+      if (!post || mediaKind(post) !== 'video' || video.getAttribute('src') !== post.media.url) return;
+      video.hidden = true;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      slide._refs.missing.hidden = false;
+    });
     img.addEventListener('load', () => fit(img.naturalWidth, img.naturalHeight));
     playback.observe(video);
     return slide;
@@ -331,10 +341,12 @@ export class FeedView {
 
   async #share(post) {
     const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?post=${encodeURIComponent(post.id)}`;
-    try {
-      if (navigator.share) await navigator.share({ title: post.author.name, text: post.caption.slice(0, 120), url });
-      else { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-    } catch (error) { if (error?.name !== 'AbortError') toast(url); }
+    if (navigator.share) {
+      try { await navigator.share({ title: post.author.name, text: (post.caption || '').slice(0, 120), url }); }
+      catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
+    catch { toast(t('retry')); }
   }
 }
-

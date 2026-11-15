@@ -74,6 +74,9 @@ export function toast(message) {
   toastTimer = setTimeout(() => node.classList.remove('show'), 2400);
 }
 
+export const mediaPlaceholder = label => h('div', { class: 'media-missing', role: 'img', 'aria-label': label },
+  h('span', { class: 'media-missing-icon', html: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13ZM6 6v11.2l3.8-4.1a1 1 0 0 1 1.5 0l2.2 2.3 1.4-1.5a1 1 0 0 1 1.5 0L18 16V6H6Zm8.5 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg>' }));
+
 export function avatar(profile, size = 48) {
   const node = h('span', { class: 'avatar', style: `--s:${size}px` });
   paintAvatar(node, profile, size);

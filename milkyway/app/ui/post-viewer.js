@@ -4,7 +4,7 @@ import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
 import { setImage, poster, mediaKind } from '../core/media.js';
 import { actions } from '../data/feed.js';
-import { h, icon, count, ago, toast, brandMark } from './dom.js';
+import { h, icon, count, ago, toast, brandMark, mediaPlaceholder } from './dom.js';
 
 const SWIPE_PX = 60;
 
@@ -103,6 +103,10 @@ export class PostViewer {
       const video = h('video', { controls: true, playsinline: true, autoplay: true, loop: true, preload: 'auto', src: url });
       const still = poster(url, 720);
       if (still) video.poster = still;
+      video.addEventListener('error', () => {
+        if (this.post !== post || !this.stage.contains(video)) return;
+        this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
+      });
       video.play?.()?.catch?.(() => { video.muted = true; video.play().catch(() => {}); });
       this.stage.replaceChildren(video);
     } else if (kind === 'image') {
@@ -114,7 +118,7 @@ export class PostViewer {
         onFail: () => {
           if (this.post !== post) return;
           this.stage.classList.remove('loading');
-          this.stage.replaceChildren(h('p', { class: 'pv-missing muted' }, t('imageUnavailable')));
+          this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
         },
       });
       // Tap a photo to see it at its real size (scroll to pan); tap again to fit the screen.
@@ -190,10 +194,13 @@ export class PostViewer {
   async #share() {
     const post = this.post;
     const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?post=${encodeURIComponent(post.id)}`;
-    try {
-      if (navigator.share) await navigator.share({ title: 'MilkyWay', text: (post.caption || '').slice(0, 120), url });
-      else { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-    } catch (error) { if (error?.name !== 'AbortError') toast(url); }
+    if (navigator.share) {
+      try { await navigator.share({ title: 'MilkyWay', text: (post.caption || '').slice(0, 120), url }); }
+      catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
+      return;
+    }
+    try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
+    catch { toast(t('retry')); }
   }
 
   // Delete needs a second tap within 3 s.

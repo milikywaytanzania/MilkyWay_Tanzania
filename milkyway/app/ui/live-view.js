@@ -722,8 +722,11 @@ export class LiveView {
 
 async function shareLive(live) {
   const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}#live=${encodeURIComponent(live.room)}`;
-  try {
-    if (navigator.share) await navigator.share({ title: live.title || 'MilkyWay LIVE', url });
-    else { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-  } catch (error) { if (error?.name !== 'AbortError') toast(url); }
+  if (navigator.share) {
+    try { await navigator.share({ title: live.title || 'MilkyWay LIVE', url }); }
+    catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
+    return;
+  }
+  try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
+  catch { toast(t('retry')); }
 }

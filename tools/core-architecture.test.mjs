@@ -83,6 +83,21 @@ test('homepage APK download is a native static-file link', () => {
   assert.match(server, /'Content-Type': 'application\/vnd\.android\.package-archive'/);
 });
 
+test('feed sharing uses native share or a short copy toast, and failed media uses an icon fallback', () => {
+  const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
+  const live = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
+  assert.match(feed, /navigator\.share\(\{ title: post\.author\.name/);
+  assert.match(feed, /navigator\.clipboard\.writeText\(url\); toast\(t\('linkCopied'\)\)/);
+  for (const source of [feed, viewer, live]) assert.doesNotMatch(source, /toast\(url\)/);
+  assert.match(feed, /mediaPlaceholder\(t\('imageUnavailable'\)\)/);
+  assert.match(feed, /video\.addEventListener\('error'/);
+  assert.match(viewer, /video\.addEventListener\('error'/);
+  assert.match(viewer, /mediaPlaceholder\(t\('imageUnavailable'\)\)/);
+  assert.match(styles, /\.media-missing-icon/);
+});
+
 test('public Supabase content uses DOM text nodes and validates media URLs', () => {
   const homepage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const publicMedia = readFileSync(new URL('../milkyway/public-media.js', import.meta.url), 'utf8');
