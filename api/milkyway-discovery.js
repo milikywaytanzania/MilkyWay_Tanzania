@@ -1,5 +1,6 @@
+import { supabaseKey } from './_lib/supa.js';
 const PROJECT_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://wpclkhgizbvxuvbhbwzs.supabase.co').replace(/\/+$/, '');
-function keyFor(req) { return req.headers.apikey || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''; }
+function keyFor(req) { return supabaseKey(req); }
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).setHeader('Allow','GET').json({ error: 'Method not allowed.' });
   const apikey = keyFor(req);

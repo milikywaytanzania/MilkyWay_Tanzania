@@ -4,6 +4,8 @@ import { config } from '../config.js';
 import { api, rest, auth, supabase } from '../core/net.js';
 import { resource, perform, registerOp } from '../core/sync.js';
 import { profiles } from './profiles.js';
+import { t } from '../core/i18n.js';
+import { toast } from '../ui/dom.js';
 
 const pageUrl = (scope, before) => {
   const params = new URLSearchParams({ action: 'page', scope, limit: String(config.feed.pageSize) });
@@ -77,31 +79,44 @@ const updatePost = (postId, change) => feeds.forEach(({ source }) => {
 });
 
 // ---- Writes (idempotent, so a replay after a flaky connection never double-counts) ----
-registerOp('like', op => op.on
+// Row-level security only lets people write their own rows. An operation queued offline by another account on this
+// device (or before sign-out) would be refused with "violates row-level security policy", so it is dropped instead.
+const ownOp = send => op => (op.user && op.user === auth.userId ? send(op) : Promise.resolve('skipped'));
+// Readable message instead of the raw PostgREST text (e.g. 'new row violates row-level security policy for table "mw_saves"').
+const friendly = (error, key) => {
+  if (error?.status === 401) return Object.assign(new Error(t('signInToContinue')), { status: 401 });
+  if (error?.status === 403 || /row-level security/i.test(String(error?.message || ''))) return Object.assign(new Error(t(key)), { status: 403 });
+  return error;
+};
+registerOp('like', ownOp(op => op.on
   ? rest('mw_signals?on_conflict=post_id,user_id,kind', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { post_id: op.post, user_id: op.user, kind: 'light' } })
-  : rest(`mw_signals?post_id=eq.${op.post}&user_id=eq.${op.user}&kind=eq.light`, { method: 'DELETE' }));
-registerOp('save', op => op.on
+  : rest(`mw_signals?post_id=eq.${op.post}&user_id=eq.${op.user}&kind=eq.light`, { method: 'DELETE' })));
+registerOp('save', ownOp(op => op.on
   ? rest('mw_saves?on_conflict=post_id,user_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { post_id: op.post, user_id: op.user } })
-  : rest(`mw_saves?post_id=eq.${op.post}&user_id=eq.${op.user}`, { method: 'DELETE' }));
-registerOp('follow', op => op.on
+  : rest(`mw_saves?post_id=eq.${op.post}&user_id=eq.${op.user}`, { method: 'DELETE' })));
+registerOp('follow', ownOp(op => op.on
   ? rest('mw_follows?on_conflict=follower_id,following_id', { method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal', body: { follower_id: op.user, following_id: op.target } })
-  : rest(`mw_follows?follower_id=eq.${op.user}&following_id=eq.${op.target}`, { method: 'DELETE' }));
+  : rest(`mw_follows?follower_id=eq.${op.user}&following_id=eq.${op.target}`, { method: 'DELETE' })));
 
 export const actions = {
   like(post, on) {
     updatePost(post.id, current => ({ liked: on, likes: Math.max(0, current.likes + (on === current.liked ? 0 : on ? 1 : -1)) }));
     return perform('like', { post: post.id, user: auth.userId, on }).catch(error => {
       updatePost(post.id, current => ({ liked: !on, likes: Math.max(0, current.likes + (on ? -1 : 1)) }));
-      throw error;
+      throw friendly(error, 'likeFailed');
     });
   },
   save(post, on) {
     updatePost(post.id, () => ({ saved: on }));
-    return perform('save', { post: post.id, user: auth.userId, on }).catch(error => { updatePost(post.id, () => ({ saved: !on })); throw error; });
+    if (!auth.userId) return Promise.reject(friendly({ status: 401 }));
+    return perform('save', { post: post.id, user: auth.userId, on }).then(result => {
+      if (result === 'sent' && on) toast(t('saved'));
+      return result;
+    }).catch(error => { updatePost(post.id, () => ({ saved: !on })); throw friendly(error, 'saveFailed'); });
   },
   follow(authorId, on) {
     profiles.setFollowing(authorId, on);
-    return perform('follow', { target: authorId, user: auth.userId, on }).catch(error => { profiles.setFollowing(authorId, !on); throw error; });
+    return perform('follow', { target: authorId, user: auth.userId, on }).catch(error => { profiles.setFollowing(authorId, !on); throw friendly(error, 'followFailed'); });
   },
   /** Deletes one of the signed-in user's posts (row-level security allows authors only), then its files. */
   async remove(post) {

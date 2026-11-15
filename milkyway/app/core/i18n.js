@@ -1,4 +1,6 @@
-// Minimal UI strings for the MilkyWay shell. Follows the saved language choice (localStorage "mw_lang").
+// UI strings for the MilkyWay shell. Follows the saved language choice (localStorage "mw_lang"), else the device language.
+import { extraLocales } from './locales.js';
+
 const strings = {
   en: {
     forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Lives',
@@ -42,6 +44,28 @@ const strings = {
     deleteFailed: 'Could not delete this post', imageUnavailable: 'This photo could not be loaded', connectionLost: 'Connection lost',
     wantsToJoin: 'wants to join as a guest', newRequests: 'new guest requests', removeGuestFirst: 'Remove a guest from the stage first',
     openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite',
+    // Nova menu & settings
+    menu: 'Menu', settings: 'Settings & privacy', privacy: 'Privacy', privateAccountHint: 'Only followers you approve see your posts',
+    whoCanMessage: 'Who can message me', everyone: 'Everyone', followersOnly: 'Followers', nobody: 'Nobody', notifications: 'Notifications',
+    notifyFollow: 'New followers', notifyEcho: 'Comments & reposts', notifySignal: 'Likes', giftBalance: 'Gift coins', balance: 'Balance',
+    earned: 'Earned from gifts', giftsReceived: 'Gifts received', studio: 'Masiyatunda Studio', studioHint: 'Your creator dashboard',
+    totalLikes: 'Likes received', recentPosts: 'Recent posts', account: 'Account', changeEmail: 'Update email', currentEmail: 'Current email',
+    newEmail: 'New email address', emailSent: 'Check both inboxes to confirm the change', invalidEmail: 'Enter a valid email address',
+    changePhone: 'Update phone number', phoneNumber: 'Phone number', phoneSaved: 'Phone number saved', phoneHint: 'Include your country code, e.g. +255…',
+    changePassword: 'Change password', newPassword: 'New password', confirmPassword: 'Confirm new password',
+    passwordRule: 'Password must be at least 8 characters', passwordMismatch: 'Passwords do not match', passwordChanged: 'Password changed',
+    resetPassword: 'Send password reset link', resetSent: 'Reset link sent to', forgotPassword: 'Forgot password?',
+    onlineStatus: 'Online status', showOnline: 'Show when I am active', activeNow: 'Active now', activeUsers: 'active now', online: 'Online',
+    offlineStatus: 'Offline', hiddenStatus: 'Your status is hidden', language: 'Language', languageHint: 'Choose the app language',
+    saveFailed: 'Could not save this post. Try again.', likeFailed: 'Could not like this post', followFailed: 'Could not follow right now',
+    settingsSaved: 'Settings saved', update: 'Update', manage: 'Manage', wallet: 'Wallet',
+    // Messages & calls
+    newChat: 'New message', searchPeople: 'Search people by name or @username', noResults: 'No one found', typeMessage: 'Message…',
+    cantMessage: 'This person is not accepting messages from you', messageFailed: 'Message not sent', audioCall: 'Audio call',
+    videoCall: 'Video call', calling: 'Calling…', ringing: 'Ringing…', incomingAudio: 'Incoming audio call', incomingVideo: 'Incoming video call',
+    callConnected: 'Connected', callEnded: 'Call ended', callDeclined: 'Call declined', noAnswer: 'No answer', callFailed: 'Call could not connect',
+    endCall: 'End call', you: 'You', seen: 'Seen', back: 'Back', micNeeded: 'Allow the microphone (and camera for video calls) to call',
+    sayHello: 'Say hello 👋', deleteForMe: 'Delete for me', edited: 'edited',
   },
   sw: {
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
@@ -85,9 +109,58 @@ const strings = {
     deleteFailed: 'Imeshindikana kufuta post hii', imageUnavailable: 'Picha hii haikuweza kupakiwa', connectionLost: 'Muunganisho umekatika',
     wantsToJoin: 'anaomba kujiunga kama mgeni', newRequests: 'maombi mapya ya wageni', removeGuestFirst: 'Ondoa mgeni jukwaani kwanza',
     openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika',
+    // Menyu ya Nova na mipangilio
+    menu: 'Menyu', settings: 'Mipangilio na faragha', privacy: 'Faragha', privateAccountHint: 'Wafuasi unaowakubali tu ndio wanaona posts zako',
+    whoCanMessage: 'Nani anaweza kunitumia ujumbe', everyone: 'Wote', followersOnly: 'Wafuasi', nobody: 'Hakuna', notifications: 'Arifa',
+    notifyFollow: 'Wafuasi wapya', notifyEcho: 'Maoni na reposts', notifySignal: 'Wanaopenda', giftBalance: 'Sarafu za zawadi', balance: 'Salio',
+    earned: 'Ulizopata kwa zawadi', giftsReceived: 'Zawadi ulizopokea', studio: 'Masiyatunda Studio', studioHint: 'Dashibodi yako ya mbunifu',
+    totalLikes: 'Ulizopendwa', recentPosts: 'Posts za karibuni', account: 'Akaunti', changeEmail: 'Badilisha barua pepe', currentEmail: 'Barua pepe ya sasa',
+    newEmail: 'Barua pepe mpya', emailSent: 'Angalia barua pepe zote mbili kuthibitisha mabadiliko', invalidEmail: 'Weka barua pepe sahihi',
+    changePhone: 'Badilisha namba ya simu', phoneNumber: 'Namba ya simu', phoneSaved: 'Namba ya simu imehifadhiwa', phoneHint: 'Weka msimbo wa nchi, mfano +255…',
+    changePassword: 'Badilisha nenosiri', newPassword: 'Nenosiri jipya', confirmPassword: 'Thibitisha nenosiri jipya',
+    passwordRule: 'Nenosiri liwe na herufi 8 au zaidi', passwordMismatch: 'Manenosiri hayalingani', passwordChanged: 'Nenosiri limebadilishwa',
+    resetPassword: 'Tuma kiungo cha kubadilisha nenosiri', resetSent: 'Kiungo kimetumwa kwa', forgotPassword: 'Umesahau nenosiri?',
+    onlineStatus: 'Hali ya mtandaoni', showOnline: 'Onyesha ninapokuwa hai', activeNow: 'Yuko hai sasa', activeUsers: 'wako hai sasa', online: 'Mtandaoni',
+    offlineStatus: 'Nje ya mtandao', hiddenStatus: 'Hali yako imefichwa', language: 'Lugha', languageHint: 'Chagua lugha ya programu',
+    saveFailed: 'Imeshindikana kuhifadhi post hii. Jaribu tena.', likeFailed: 'Imeshindikana kupenda post hii', followFailed: 'Imeshindikana kufuata sasa',
+    settingsSaved: 'Mipangilio imehifadhiwa', update: 'Badilisha', manage: 'Simamia', wallet: 'Pochi',
+    // Ujumbe na simu
+    newChat: 'Ujumbe mpya', searchPeople: 'Tafuta watu kwa jina au @jina', noResults: 'Hakuna aliyepatikana', typeMessage: 'Ujumbe…',
+    cantMessage: 'Mtu huyu hapokei ujumbe kutoka kwako', messageFailed: 'Ujumbe haukutumwa', audioCall: 'Simu ya sauti',
+    videoCall: 'Simu ya video', calling: 'Inapiga…', ringing: 'Inaita…', incomingAudio: 'Simu ya sauti inaingia', incomingVideo: 'Simu ya video inaingia',
+    callConnected: 'Mmeunganishwa', callEnded: 'Simu imekwisha', callDeclined: 'Simu imekataliwa', noAnswer: 'Hakuna jibu', callFailed: 'Simu haikuweza kuunganishwa',
+    endCall: 'Kata simu', you: 'Wewe', seen: 'Imeonekana', back: 'Rudi', micNeeded: 'Ruhusu maikrofoni (na kamera kwa simu ya video) kupiga simu',
+    sayHello: 'Sema habari 👋', deleteForMe: 'Futa kwangu', edited: 'imehaririwa',
   },
 };
-const language = (() => { try { return localStorage.getItem('mw_lang') || (navigator.language || 'en').slice(0, 2); } catch { return 'en'; } })();
+// English and Swahili are complete; the other languages translate the main screens and fall back to English.
+Object.assign(strings, extraLocales);
+
+/** Languages offered in the switcher, in their own names. */
+export const languages = [
+  { code: 'en', name: 'English' }, { code: 'sw', name: 'Kiswahili' }, { code: 'fr', name: 'Français' }, { code: 'es', name: 'Español' },
+  { code: 'pt', name: 'Português' }, { code: 'ar', name: 'العربية', dir: 'rtl' }, { code: 'zh', name: '中文' }, { code: 'hi', name: 'हिन्दी' },
+  { code: 'de', name: 'Deutsch' }, { code: 'ru', name: 'Русский' }, { code: 'ja', name: '日本語' }, { code: 'tr', name: 'Türkçe' },
+];
+const language = (() => {
+  try {
+    const saved = localStorage.getItem('mw_lang');
+    if (saved && strings[saved]) return saved;
+    const device = (navigator.languages || [navigator.language || 'en']).map(code => String(code).slice(0, 2).toLowerCase()).find(code => strings[code]);
+    return device || 'en';
+  } catch { return 'en'; }
+})();
 const table = strings[language] || strings.en;
 export const lang = strings[language] ? language : 'en';
 export const t = key => table[key] ?? strings.en[key] ?? key;
+
+/** Saves the choice (shared with the other MilkyWay pages through "mw_lang") and reloads the app in that language. */
+export function setLanguage(code) {
+  if (!strings[code]) return;
+  try { localStorage.setItem('mw_lang', code); } catch {}
+  location.reload();
+}
+
+// The page itself follows the language (screen readers, fonts, right-to-left layout for Arabic).
+document.documentElement.lang = lang;
+document.documentElement.dir = languages.find(item => item.code === lang)?.dir || 'ltr';

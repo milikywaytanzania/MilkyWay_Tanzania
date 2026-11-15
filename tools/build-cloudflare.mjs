@@ -75,4 +75,10 @@ writeFileSync(join(out, '_headers'), `/*
   Content-Disposition: attachment; filename="MilkyWay.apk"
   Cache-Control: public, max-age=31536000, immutable, no-transform
 `);
-console.log('Cloudflare Pages build written to dist/.');
+// The same build also deploys on Netlify: there, pictures are resized by Netlify Image CDN instead of
+// Cloudflare Image Resizing (which only exists on Cloudflare hosts).
+if (process.env.NETLIFY === 'true') {
+  const appConfig = join(out, 'milkyway', 'app', 'config.js');
+  writeFileSync(appConfig, readFileSync(appConfig, 'utf8').replace("imageCdn: 'auto'", "imageCdn: 'netlify'"));
+}
+console.log(`${process.env.NETLIFY === 'true' ? 'Netlify' : 'Cloudflare Pages'} build written to dist/.`);

@@ -14,8 +14,9 @@ import { playback } from './ui/playback.js';
 import { toast } from './ui/dom.js';
 import { profiles } from './data/profiles.js';
 
-// Call and conversation-room links belong to screens that are not in this shell yet.
-const comingSoon = hash => /^#(call=|live=mw-conversation-)/.test(hash);
+// Conversation-room links belong to a screen that is not in this shell yet. Call links (#call=<id>) open the call screen.
+const comingSoon = hash => /^#live=mw-conversation-/.test(hash);
+const callLink = hash => /^#call=([a-f0-9-]{36})/i.exec(hash)?.[1] || null;
 const soon = () => toast(t('soon'));
 
 const $ = id => document.getElementById(id);
@@ -27,7 +28,13 @@ const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSh
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
 const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray()));
 const inboxView = lazy(() => import('./ui/inbox-view.js').then(m => new m.InboxView()));
-const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({ requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)) })));
+const callView = lazy(() => import('./ui/call-view.js').then(m => m.calls));
+const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu()));
+const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({
+  requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)),
+  openMenu: profile => novaMenu().then(menu => menu.open(profile)),
+  openChat: person => { if (requireLogin()) inboxView().then(view => view.openWith(person)); },
+})));
 const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet()));
 // Full-size post popup for photos tapped in the Orbit feed (the same viewer the Nova grid uses).
 const postViewer = lazy(() => import('./ui/post-viewer.js').then(m => new m.PostViewer({
@@ -101,6 +108,8 @@ function showLive(room = null) {
 }
 
 function route() {
+  const call = callLink(location.hash);
+  if (call) { history.replaceState(null, '', location.pathname + location.search); if (requireLogin()) callView().then(calls => calls.ring(call)); }
   if (comingSoon(location.hash)) { history.replaceState(null, '', location.pathname + location.search); soon(); }
   const hash = decodeURIComponent(location.hash.slice(1));
   if (hash.startsWith('live')) showLive(hash.split('=')[1] || null);
@@ -131,6 +140,7 @@ bus.on('auth', () => {
   if (!auth.signedIn() && scope === 'following') scope = 'foryou';
   feedView.scope = null;
   setScope(scope);
+  if (auth.signedIn()) startSignedIn();
 });
 shell.toggleAttribute('data-signed-in', auth.signedIn());
 playback.onMute(muted => shell.toggleAttribute('data-muted', muted));
@@ -141,8 +151,18 @@ document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = t(
 setScope(scope);
 route();
 
+// Signed-in extras, loaded when idle: incoming calls and online status.
+let signedInStarted = false;
+function startSignedIn() {
+  if (signedInStarted || !auth.signedIn()) return;
+  signedInStarted = true;
+  callView().then(calls => calls.watch());
+  import('./data/presence.js').then(({ presence }) => presence.start());
+}
+
 idle(() => {
   profiles.loadFollowing();
+  startSignedIn();
   // LIVE badge: show when someone is live (cached list first, quiet refresh).
   import('./data/live.js').then(({ lives }) => {
     lives.subscribe(list => $('liveEntry')?.classList.toggle('has-live', (list?.length || 0) > 0));
@@ -150,13 +170,16 @@ idle(() => {
   });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
-    // Notification taps forwarded by the worker: Lives open here; calls are not in this shell yet.
+    // Notification taps forwarded by the worker: Lives and calls open here.
     navigator.serviceWorker.addEventListener('message', ({ data }) => {
       if (data?.type === 'mw-open-live' && data.url) {
         const hash = new URL(data.url).hash;
         if (comingSoon(hash)) soon();
         else { history.pushState(null, '', hash); route(); }
-      } else if (data?.type === 'mw-call-push' || data?.type === 'mw-call-action') soon();
+      } else if (data?.type === 'mw-call-push' || data?.type === 'mw-call-action') {
+        const id = data.callId || data.call?.id || data.id || callLink(new URL(data.url || location.href, location.href).hash);
+        if (auth.signedIn()) callView().then(calls => (id ? calls.ring(String(id)) : calls.watch()));
+      }
     });
   }
 }, 2500);

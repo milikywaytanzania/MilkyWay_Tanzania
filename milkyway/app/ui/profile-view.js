@@ -8,12 +8,13 @@ import { actions } from '../data/feed.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
 import { PostViewer, postKind } from './post-viewer.js';
+import { presence } from '../data/presence.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
 
 export class ProfileView {
-  constructor({ requireLogin, openCreate, openComments }) {
-    this.hooks = { requireLogin, openCreate, openComments };
+  constructor({ requireLogin, openCreate, openComments, openMenu, openChat }) {
+    this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat };
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet' });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
@@ -120,7 +121,7 @@ export class ProfileView {
       actionsRow.append(
         h('button', { class: 'pill-btn', type: 'button', onclick: () => this.#edit(profile) }, t('editProfile')),
         h('button', { class: 'pill-btn hot', type: 'button', onclick: () => { this.sheet.close(); this.hooks.openCreate(); } }, t('create')),
-        h('button', { class: 'pill-btn', type: 'button', onclick: () => this.#signOut() }, t('signOut')));
+        h('button', { class: 'pill-btn nova-menu-btn', type: 'button', 'aria-label': t('menu'), onclick: () => this.hooks.openMenu?.(profile) }, h('span', { html: icon.gear }), t('menu')));
     } else if (auth.signedIn()) {
       const button = h('button', { class: 'pill-btn hot', type: 'button' });
       const paint = () => { const on = profiles.isFollowing(profile.id); button.textContent = on ? t('following') : t('follow'); button.classList.toggle('hot', !on); button.setAttribute('aria-pressed', String(on)); };
@@ -130,7 +131,8 @@ export class ProfileView {
         paint();
       };
       paint();
-      actionsRow.append(button);
+      actionsRow.append(button,
+        h('button', { class: 'pill-btn', type: 'button', onclick: () => { this.sheet.close(); this.hooks.openChat?.(profile); } }, h('span', { html: icon.inbox }), t('inbox')));
     } else {
       actionsRow.append(h('button', { class: 'pill-btn hot', type: 'button', onclick: () => this.hooks.requireLogin() }, t('follow')));
     }
@@ -146,11 +148,13 @@ export class ProfileView {
 
     this.content.replaceChildren(
       h('div', { class: 'profile-head' },
-        avatar(profile, 84),
+        h('span', { class: `presence-avatar${presence.isOnline(profile.id) || (this.own && presence.visible) ? ' online' : ''}`, 'data-presence': this.own ? null : profile.id },
+          avatar(profile, 84), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
         h('div', { class: 'profile-names' },
           h('b', {}, profile.name || ''),
           profile.username ? h('span', { class: 'muted' }, `@${profile.username}`) : null,
-          profile.private ? h('small', { class: 'muted' }, `🔒 ${t('privateAccount')}`) : null)),
+          profile.private ? h('small', { class: 'muted' }, `🔒 ${t('privateAccount')}`) : null,
+          presence.isOnline(profile.id) || (this.own && presence.visible) ? h('small', { class: 'presence-label' }, t('activeNow')) : null)),
       profile.bio ? h('p', { class: 'profile-bio' }, profile.bio) : null,
       stats, actionsRow, grid);
   }
@@ -178,10 +182,6 @@ export class ProfileView {
     h('button', { class: 'link center', type: 'button', onclick: () => this.#load(this.id) }, t('cancel'))));
   }
 
-  async #signOut() {
-    try { const sb = await supabase(); await sb.auth.signOut(); } catch {}
-    this.sheet.close();
-  }
 }
 
 function tile(post, { open, menu }) {

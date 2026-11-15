@@ -1,4 +1,5 @@
 import { route, ApiError, SUPABASE, requireUuid } from './_lib/supa.js';
+import { livekitConfigured, livekitUrl, accessToken, CAMERA, MIC } from './_lib/livekit.js';
 
 const OUTCOMES = ['ended', 'missed', 'cancelled', 'rejected', 'disconnected'];
 const RING_WINDOW_MS = 60000;
@@ -14,7 +15,21 @@ async function loadCall(ctx, id) {
 
 // Asks the Supabase LiveKit function (which in turn calls /api/milkyway-media-authorize) for a room token.
 async function access(ctx, call, name) {
-  const roomName = `mw-conversation-${call.offer?.mode === 'video' ? 'video' : 'audio'}-${call.id}`;
+  const video = call.offer?.mode === 'video';
+  const roomName = `mw-conversation-${video ? 'video' : 'audio'}-${call.id}`;
+  // Signed here with the site's LiveKit credentials (the same ones LIVE uses), so the token always matches the
+  // LiveKit project in LIVEKIT_URL. A token signed with another project's key fails with
+  // "could not establish signal connection: invalid API key".
+  if (livekitConfigured() && /^wss:\/\//i.test(livekitUrl())) {
+    let profile = null;
+    try { [profile] = await ctx.rest(`mw_profiles?id=eq.${ctx.user.id}&select=display_name,username,avatar_url&limit=1`) || []; } catch {}
+    const token = accessToken({
+      identity: ctx.user.id, room: roomName, canPublish: true, sources: video ? [CAMERA, MIC] : [MIC], ttlSeconds: 2 * 3600,
+      name: String(name || profile?.display_name || profile?.username || 'MilkyWay user').slice(0, 80),
+      metadata: JSON.stringify({ avatar: String(profile?.avatar_url || '').slice(0, 500) }),
+    });
+    return { token, serverUrl: livekitUrl(), roomName, mode: video ? 'video' : 'audio' };
+  }
   let response;
   try {
     response = await fetch(`${SUPABASE}/functions/v1/livekit-token`, {

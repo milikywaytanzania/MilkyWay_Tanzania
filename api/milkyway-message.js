@@ -1,4 +1,5 @@
-const SUPABASE = 'https://wpclkhgizbvxuvbhbwzs.supabase.co';
+import { SUPABASE, supabaseKey } from './_lib/supa.js';
+
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_HIDE = 200;
 
@@ -7,8 +8,8 @@ class HttpError extends Error { constructor(status, message) { super(message); t
 export default async function handler(req, res) {
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Sign in first' });
-  const key = req.headers.apikey || process.env.SUPABASE_ANON_KEY || '';
-  if (!key) return res.status(503).json({ error: 'Supabase API key is not configured' });
+  // The app does not send an apikey header with site API calls, so this must not depend on a server env var.
+  const key = supabaseKey(req);
   const headers = { Authorization: auth, apikey: key, 'Content-Type': 'application/json', Prefer: 'return=representation' };
   const rest = async (path, init = {}) => {
     const response = await fetch(`${SUPABASE}/rest/v1/${path}`, { ...init, headers: { ...headers, ...init.headers } });

@@ -7,6 +7,9 @@ export const SUPABASE = (pick('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL') || 'ht
 const PUBLIC_KEY = 'sb_publishable_GCFJ3Is8t8mdia4gLeHApg_M_3ez9xb';
 const envKey = () => pick('SUPABASE_ANON_KEY', 'SUPABASE_PUBLISHABLE_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
 
+/** The Supabase publishable key for a request: server env var, then the browser's apikey header, then the public key. */
+export const supabaseKey = request => envKey() || String(request?.headers?.apikey || '').trim() || PUBLIC_KEY;
+
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const isUuid = value => typeof value === 'string' && UUID.test(value);
 
@@ -19,7 +22,7 @@ const fail = (response, status, error) => response.status(status).json({ error }
 // Returns a context for a valid session, otherwise answers 401 and returns null.
 export async function authenticate(request, response, { optional = false } = {}) {
   const auth = request.headers.authorization || '';
-  const key = envKey() || String(request.headers.apikey || '') || PUBLIC_KEY;
+  const key = supabaseKey(request);
   if (!key) { fail(response, 503, 'Supabase API key is not configured.'); return null; }
   if (!/^Bearer\s+\S+/.test(auth)) {
     if (optional) return makeContext(null, '', key);

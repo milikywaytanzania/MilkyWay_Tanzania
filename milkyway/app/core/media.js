@@ -7,6 +7,7 @@ const cloudflareHost = /(^|\.)masiyatunda\.com$|\.pages\.dev$/.test(host);
 const provider = (() => {
   const choice = config.media.imageCdn;
   if (choice === 'cloudinary' || (choice === 'auto' && config.cloudinary.cloudName)) return config.cloudinary.cloudName ? 'cloudinary' : 'none';
+  if (choice === 'netlify' || (choice === 'auto' && /\.netlify\.app$/.test(host))) return 'netlify';
   if (choice === 'cloudflare' || (choice === 'auto' && cloudflareHost)) return 'cloudflare';
   return 'none';
 })();
@@ -30,9 +31,10 @@ const CLOUDFLARE_REMOTE = /^https:\/\/wpclkhgizbvxuvbhbwzs\.supabase\.co\/storag
 export function image(url, width = 720, quality = 72) {
   if (!url || !/^https?:\/\//i.test(url)) return url || '';
   if (cdnOff || provider === 'none') return url;
-  if (provider === 'cloudflare' && !CLOUDFLARE_REMOTE.test(url)) return url;
+  if ((provider === 'cloudflare' || provider === 'netlify') && !CLOUDFLARE_REMOTE.test(url)) return url;
   const w = step(width);
   if (provider === 'cloudinary') return `https://res.cloudinary.com/${config.cloudinary.cloudName}/image/fetch/f_auto,q_auto,w_${w}/${encodeURIComponent(url)}`;
+  if (provider === 'netlify') return `/.netlify/images?url=${encodeURIComponent(url)}&w=${w}&q=${quality}&fm=webp`;
   if (provider === 'cloudflare') return `/cdn-cgi/image/width=${w},quality=${quality},format=auto,fit=scale-down/${url}`;
   return url;
 }
