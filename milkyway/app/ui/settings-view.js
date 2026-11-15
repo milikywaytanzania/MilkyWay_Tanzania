@@ -7,6 +7,10 @@ import { presence } from '../data/presence.js';
 import { catalog } from '../data/gifts.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, ago, toast } from './dom.js';
+import { isOwnerAccount, ownerVerified } from './admin-view.js';
+
+let adminView = null;
+const openAdmin = () => (adminView ||= import('./admin-view.js').then(m => new m.AdminView())).then(view => view.open());
 
 const ACCOUNT = `${config.api.base}/milkyway-account`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -68,11 +72,17 @@ export class NovaMenu {
     this.activeLine = h('small', { class: 'muted' });
     const coins = row('🪙', t('giftBalance'), { detail: '…', onclick: () => this.#wallet() });
     const languageName = languages.find(item => item.code === lang)?.name || 'English';
+    // Gold Admin button: only for the app owner's account, confirmed by the server before it appears.
+    const adminSlot = h('div', {});
+    if (isOwnerAccount()) ownerVerified().then(ok => {
+      if (ok) adminSlot.replaceChildren(h('button', { class: 'pill-btn wide nova-admin-btn', type: 'button', onclick: () => { this.sheet.close(); openAdmin(); } }, '🛡 Admin'));
+    });
     this.content.replaceChildren(
       h('div', { class: 'nova-card' },
         h('span', { class: 'presence-avatar online-self' }, avatar(person, 56), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
         h('div', { class: 'nova-card-text' }, h('b', {}, person.name), h('small', { class: 'muted' }, auth.user?.email || ''), this.onlineBadge),
-        h('div', { class: 'nova-active', title: t('activeNow') }, h('i', { class: 'presence-dot live', 'aria-hidden': 'true' }), this.activeLine)),
+        h('button', { class: 'nova-active', type: 'button', title: t('activeNow'), onclick: () => this.#online() }, h('i', { class: 'presence-dot live', 'aria-hidden': 'true' }), this.activeLine)),
+      adminSlot,
       h('p', { class: 'nova-section' }, t('settings')),
       row('🔒', t('privacy'), { onclick: () => this.#privacy() }),
       coins,
@@ -91,6 +101,24 @@ export class NovaMenu {
     api(`${ACCOUNT}?action=balance`, { timeout: 10000 })
       .then(result => { coins.detail.textContent = `${count(Number(result?.coins) || 0)} ${t('coins')}`; })
       .catch(() => { coins.detail.textContent = ''; });
+  }
+
+  // ---- Who is online ---------------------------------------------------------------------------------------
+  async #online() {
+    const box = h('div', { class: 'nova-list nova-online-list' }, h('p', { class: 'muted center' }, t('loading')));
+    this.#screen(`${count(presence.count)} ${t('activeUsers')}`, box);
+    const ids = presence.ids.filter(id => /^[a-f0-9-]{36}$/i.test(id)).slice(0, 100);
+    if (!ids.length) { box.replaceChildren(h('p', { class: 'muted center' }, t('empty'))); return; }
+    let rows = [];
+    try { const sb = await supabase(); rows = (await sb.from('mw_profiles').select('id,display_name,username,avatar_url').in('id', ids)).data || []; } catch {}
+    const byId = new Map(rows.map(row => [row.id, row]));
+    box.replaceChildren(...ids.map(id => {
+      const row = byId.get(id) || {};
+      const person = { id, name: row.display_name || row.username || (id === auth.userId ? auth.name : 'MilkyWay'), avatar: row.avatar_url || '' };
+      return h('div', { class: 'nova-list-row' },
+        h('span', { class: 'presence-avatar online' }, avatar(person, 40), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
+        h('div', { class: 'chat-text' }, h('b', {}, person.name), h('span', { class: 'presence-label' }, id === auth.userId ? t('online') : t('activeNow'))));
+    }));
   }
 
   // ---- Privacy ---------------------------------------------------------------------------------------------

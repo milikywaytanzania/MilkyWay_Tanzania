@@ -13,7 +13,8 @@ import { feed, actions, deletedPosts } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
 import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
-import { h, icon, count, toast, paintAvatar, brandMark } from './dom.js';
+import { h, icon, count, toast, paintAvatar, brandMark, avatar } from './dom.js';
+import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } from '../data/promoted.js';
 
 const DOUBLE_TAP_MS = 260;
 
@@ -39,13 +40,18 @@ export class FeedView {
       onChange: index => {
         if (index > 0) this.interacted = true;
         this.#trackProgress();
+        const item = this.pager.items[index];
+        if (item?.kind === 'ad') adImpression(item.ad);
       },
       onNearEnd: () => this.source?.more(),
     });
     this.#bindEvents();
     playback.onMute(muted => this.root.classList.toggle('is-muted', muted));
     this.root.classList.toggle('is-muted', playback.muted);
-    bus.on('follow', () => this.pager.mounted.forEach(slide => this.#paintFollow(slide, slide._post)));
+    bus.on('follow', () => this.pager.mounted.forEach(slide => { this.#paintFollow(slide, slide._post); if (slide._post?.kind === 'suggest') this.#paintSuggest(slide); }));
+    this.promo = { ads: [], people: [] };
+    this.#loadPromoted();
+    bus.on('auth', () => this.#loadPromoted());
   }
 
   /** Switches between "foryou" and "following". Cached posts paint immediately. */
@@ -64,8 +70,17 @@ export class FeedView {
   reload() { this.interacted = false; return this.source?.refresh().then(() => this.#emptyCheck()); }
   focus() { this.surface.focus({ preventScroll: true }); }
 
+  // Sponsored ads and friend suggestions load in the background and are woven in once they arrive.
+  #loadPromoted() {
+    Promise.all([loadAds(), loadSuggestions()]).then(([ads, people]) => {
+      this.promo = { ads, people };
+      if (this.lastValue) this.#apply(this.lastValue);
+    });
+  }
+
   #apply(value) {
-    const live = post => !deletedPosts.has(post.id);
+    this.lastValue = value;
+    const live = post => !post.kind && !deletedPosts.has(post.id);
     const incoming = (value?.posts || []).filter(live);
     const current = this.pager.items.filter(live);
     let items = incoming;
@@ -76,6 +91,7 @@ export class FeedView {
       const known = new Set(kept.map(post => post.id));
       items = [...kept, ...incoming.filter(post => !known.has(post.id))];
     }
+    items = weave(items, this.promo);
     this.pager.setItems(items);
     if (items.length) this.#setStatus(null);
   }
@@ -113,12 +129,18 @@ export class FeedView {
     const name = h('button', { class: 'meta-name', type: 'button', 'data-act': 'profile' });
     const caption = h('p', { class: 'meta-caption', 'data-act': 'caption' });
     const bar = h('i');
+    // Sponsored label + call to action (ads) and the "Suggested for you" card; hidden on normal posts.
+    const adBar = h('div', { class: 'ad-bar', hidden: true },
+      h('div', { class: 'ad-line' }, h('span', { class: 'ad-tag' }, t('sponsored') === 'sponsored' ? 'Sponsored' : t('sponsored')),
+        h('button', { class: 'ad-hide', type: 'button', 'data-act': 'ad-hide', 'aria-label': 'Not interested' }, '✕')),
+      h('button', { class: 'ad-cta', type: 'button', 'data-act': 'ad-cta' }, ''));
+    const suggest = h('div', { class: 'suggest-card', hidden: true });
     const slide = h('section', { class: 'slide', 'aria-roledescription': 'slide' },
       media, brandMark(), h('div', { class: 'shade', 'aria-hidden': 'true' }),
       h('aside', { class: 'rail' }, h('div', { class: 'rail-author', 'data-act': 'profile' }, avatarNode, follow), like, comment, save, gift, share),
-      h('div', { class: 'meta' }, name, caption),
+      h('div', { class: 'meta' }, name, caption, adBar), suggest,
       h('div', { class: 'progress', 'aria-hidden': 'true' }, bar));
-    slide._refs = { video, img, text, paused, missing, avatarNode, follow, like, comment, save, gift, share, name, caption, bar };
+    slide._refs = { video, img, text, paused, missing, avatarNode, follow, like, comment, save, gift, share, name, caption, bar, adBar, suggest };
     // Portrait media fills the screen; landscape media is letterboxed instead of cropped.
     const fit = (w, h) => { if (w && h) slide.dataset.fit = h >= w * 1.2 ? 'cover' : 'contain'; };
     video.addEventListener('loadedmetadata', () => fit(video.videoWidth, video.videoHeight));
@@ -132,6 +154,9 @@ export class FeedView {
     const r = slide._refs;
     const type = mediaKind(post);
     slide.dataset.type = type;
+    if (post.kind) slide.dataset.kind = post.kind; else delete slide.dataset.kind;
+    r.adBar.hidden = post.kind !== 'ad';
+    r.suggest.hidden = post.kind !== 'suggest';
     r.video.hidden = type !== 'video';
     r.img.hidden = type !== 'image';
     r.text.hidden = type !== 'text';
@@ -157,6 +182,24 @@ export class FeedView {
     r.caption.classList.remove('open');
     this.#paintCounts(slide, post);
     this.#paintFollow(slide, post);
+    if (post.kind === 'ad') {
+      r.name.textContent = post.ad.business || post.ad.title || '';
+      r.caption.textContent = [post.ad.title && post.ad.business ? post.ad.title : '', post.ad.description || ''].filter(Boolean).join(' — ');
+      r.adBar.querySelector('.ad-cta').textContent = `${post.ad.ctaLabel || (t('learnMore') === 'learnMore' ? 'Learn more' : t('learnMore'))} ›`;
+      r.adBar.querySelector('.ad-cta').hidden = !post.ad.destination;
+    }
+    if (post.kind === 'suggest') { r.name.textContent = ''; r.caption.textContent = ''; this.#paintSuggest(slide); }
+  }
+
+  #paintSuggest(slide) {
+    const people = this.promo.people.filter(person => !profiles.isFollowing(person.id)).slice(0, 6);
+    const title = t('suggestedForYou') === 'suggestedForYou' ? 'Suggested for you' : t('suggestedForYou');
+    slide._refs.suggest.replaceChildren(h('b', { class: 'suggest-title' }, title),
+      people.length ? h('div', { class: 'suggest-grid' }, ...people.map(person => h('div', { class: 'suggest-person' },
+        h('button', { class: 'suggest-face', type: 'button', 'data-act': 'suggest-profile', 'data-uid': person.id }, avatar(person, 64)),
+        h('b', {}, person.name), h('small', { class: 'muted' }, person.mutual ? `${count(person.mutual)} ${t('followers').toLowerCase()}` : person.username ? `@${person.username}` : ''),
+        h('button', { class: 'pill-btn hot', type: 'button', 'data-act': 'suggest-follow', 'data-uid': person.id }, t('follow')))))
+        : h('p', { class: 'muted center' }, '✓'));
   }
 
   #paintCounts(slide, post) {
@@ -175,6 +218,7 @@ export class FeedView {
 
   #paintFollow(slide, post) {
     if (!post) return;
+    if (post.kind) { slide._refs.follow.hidden = true; return; }
     const own = post.author.id === auth.userId;
     slide._refs.follow.hidden = own || profiles.isFollowing(post.author.id);
   }
@@ -214,6 +258,27 @@ export class FeedView {
       const post = slide?._post;
       if (!target || !post) return;
       const act = target.dataset.act;
+      if (post.kind) {
+        if (act === 'ad-cta' || (act === 'media' && post.kind === 'ad' && mediaKind(post) !== 'video' && post.ad.destination)) {
+          event.stopPropagation();
+          adClick(post.ad);
+          if (/^https?:\/\//i.test(post.ad.destination || '')) window.open(post.ad.destination, '_blank', 'noopener');
+          return;
+        }
+        if (act === 'ad-hide') {
+          event.stopPropagation();
+          dismissAd(post.ad);
+          this.promo = { ...this.promo, ads: this.promo.ads.filter(ad => ad.id !== post.ad.id) };
+          this.pager.next?.();
+          setTimeout(() => this.lastValue && this.#apply(this.lastValue), 350);
+          return;
+        }
+        const uid = target.dataset.uid;
+        if (act === 'suggest-follow' && uid) { event.stopPropagation(); if (this.hooks.requireLogin()) actions.follow(uid, true).catch(error => toast(error.message)); return; }
+        if (act === 'suggest-profile' && uid) { event.stopPropagation(); const person = this.promo.people.find(p => p.id === uid); this.hooks.openProfile(person || { id: uid }); return; }
+        if (act === 'media' && mediaKind(post) === 'video') this.#tap(slide);
+        return;
+      }
       if (act === 'media') {
         const now = event.timeStamp;
         if (now - lastTap < DOUBLE_TAP_MS) {

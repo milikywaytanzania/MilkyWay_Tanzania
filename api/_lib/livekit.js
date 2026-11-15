@@ -38,6 +38,32 @@ export async function livekit(method, room, body = {}, grant = null) {
   return data;
 }
 
+// Whether LiveKit accepts this server's key/secret for LIVEKIT_URL. A key from another LiveKit project (or a stale
+// secret) still signs tokens, but every client then fails with "could not establish signal connection: invalid API
+// key". Checked with one cheap RoomService call and remembered for a few minutes per server instance.
+let credentialCheck = { at: 0, ok: true, reason: '' };
+export async function livekitUsable() {
+  if (!livekitConfigured() || !/^wss?:\/\//i.test(livekitUrl())) return false;
+  const age = Date.now() - credentialCheck.at;
+  if (credentialCheck.at && age < (credentialCheck.ok ? 5 * 60_000 : 60_000)) return credentialCheck.ok;
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = sign({ iss: env('LIVEKIT_API_KEY'), sub: 'milkyway-server', nbf: now - 5, exp: now + 60, video: { roomList: true } });
+  const origin = livekitUrl().replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:');
+  try {
+    const result = await fetch(`${origin}/twirp/livekit.RoomService/ListRooms`, {
+      method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names: ['milkyway-credential-check'] }), signal: AbortSignal.timeout(5000),
+    });
+    // Only a clear refusal of the credentials disables local signing; an outage is not a key problem.
+    const rejected = result.status === 401 || result.status === 403;
+    credentialCheck = { at: Date.now(), ok: !rejected, reason: rejected ? 'LiveKit rejected LIVEKIT_API_KEY / LIVEKIT_API_SECRET for LIVEKIT_URL.' : '' };
+  } catch {
+    credentialCheck = { at: Date.now() - 4 * 60_000, ok: true, reason: 'LiveKit was unreachable during the credential check.' };
+  }
+  return credentialCheck.ok;
+}
+export const livekitCredentialStatus = () => ({ ...credentialCheck });
+
 /** Signs a participant access token for one room. `sources` are CAMERA / MIC numbers. */
 export function accessToken({ identity, name = '', metadata = '', room, canPublish = false, sources = [], ttlSeconds = 3600 }) {
   const now = Math.floor(Date.now() / 1000);

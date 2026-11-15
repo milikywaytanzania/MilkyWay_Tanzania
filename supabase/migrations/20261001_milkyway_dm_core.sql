@@ -91,7 +91,7 @@ declare
   v_rows integer;
 begin
   if auth.uid() is null then raise exception 'Sign in first.' using errcode = '28000'; end if;
-  if char_length(v_body) < 1 or char_length(v_body) > case when p_group then 4000 else 12000 end then
+  if char_length(v_body) < 1 or char_length(v_body) > (case when p_group then 4000 else 12000 end) then
     raise exception 'Message length is not allowed.' using errcode = '22023';
   end if;
   if p_group then

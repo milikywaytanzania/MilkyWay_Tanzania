@@ -37,7 +37,11 @@ export default async function handler(req, res) {
       if (!rows?.length) return rows || [];
       const ids = rows.map(row => row.id).filter(id => UUID.test(id));
       if (!ids.length) return rows;
-      const hidden = new Set((await rest(`mw_message_hides?select=message_id&user_id=eq.${user.id}&message_id=in.(${ids.join(',')})&limit=${ids.length}`)).map(row => row.message_id));
+      const query = column => rest(`mw_message_hides?select=message_id&${column}=eq.${user.id}&message_id=in.(${ids.join(',')})&limit=${ids.length}`);
+      // Older Supabase layouts name the column owner_id (the repair SQL renames it to user_id). Hidden-message lookup
+      // must never stop the conversation itself from loading.
+      const found = await query('user_id').catch(() => query('owner_id')).catch(() => []);
+      const hidden = new Set((found || []).map(row => row.message_id));
       return rows.filter(row => !hidden.has(row.id));
     };
 
@@ -61,7 +65,13 @@ export default async function handler(req, res) {
       const ids = (Array.isArray(body.ids) ? body.ids : []).filter(id => typeof id === 'string' && UUID.test(id)).slice(0, MAX_HIDE);
       if (!ids.length) throw new HttpError(400, 'Nothing to delete');
       const scope = isGroup ? 'group' : 'dm';
-      await rest('mw_message_hides?on_conflict=user_id,message_id', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify(ids.map(id => ({ user_id: user.id, message_id: id, scope }))) });
+      const save = (path, rows) => rest(path, { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify(rows) });
+      try { await save('mw_message_hides?on_conflict=user_id,message_id', ids.map(id => ({ user_id: user.id, message_id: id, scope }))); }
+      catch (error) {
+        if (error.status === 401) throw error;
+        // Older layout (owner_id, no scope) until the repair SQL is applied.
+        await save('mw_message_hides?on_conflict=owner_id,message_id', ids.map(id => ({ owner_id: user.id, message_id: id })));
+      }
       return res.status(200).json({ ok: true, hidden: ids.length });
     }
 

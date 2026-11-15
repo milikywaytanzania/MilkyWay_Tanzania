@@ -16,6 +16,8 @@ export const presence = {
   /** Number of distinct people active right now (including you when visible). */
   get count() { return online.size; },
   isOnline: id => Boolean(id) && online.has(String(id)),
+  /** Ids of the people active right now. */
+  get ids() { return [...online]; },
   subscribe(fn) { subscribers.add(fn); fn(presence); return () => subscribers.delete(fn); },
   async setVisible(on) {
     try { localStorage.setItem(VISIBLE_KEY, on ? '1' : '0'); } catch {}

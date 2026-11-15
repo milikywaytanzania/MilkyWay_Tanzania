@@ -30,29 +30,41 @@ class Emitter {
 
 const isJson = response => response && ![404, 405].includes(response.status) && /json/.test(response.headers.get('content-type') || '');
 
-async function fetchToken(live, host) {
+// LiveKit refuses tokens signed with a key from another project: "could not establish signal connection: invalid API key".
+export const isKeyRejection = error => /invalid api key|api key|signal connection|unauthori[sz]ed|\b401\b/i.test(String(error?.message || error || ''));
+
+// Asks the Supabase livekit-token Edge Function (it signs with the LiveKit secrets stored in Supabase).
+async function directToken(body) {
+  const token = await accessToken();
+  const response = await fetch(config.livekit.directTokenEndpoint, {
+    method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(12000),
+    headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!isJson(response)) throw Object.assign(new Error('LIVE unavailable'), { status: response.status });
+  const payload = await response.json();
+  if (!response.ok) throw Object.assign(new Error(payload?.error || 'LIVE unavailable'), { status: response.status });
+  return payload;
+}
+
+async function fetchToken(live, host, { direct = false } = {}) {
   const cached = tokenCache.get(live.room);
-  if (!host && cached && Date.now() - cached.at < 60_000) return cached.payload;
+  if (!direct && !host && cached && Date.now() - cached.at < 60_000) return cached.payload;
   const body = {
     room: live.room, roomName: live.room, identity: auth.userId, name: auth.name, participantName: auth.name,
     role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token',
   };
   let payload;
-  try { payload = await api(config.livekit.tokenEndpoint, { method: 'POST', body, timeout: 12000 }); }
-  catch (error) {
-    // Only when the site API is missing on this host (static mirror) or unreachable, use the Supabase Edge Function.
-    // A real answer from the site API (403, 404, 503…) is final: the Edge Function signs with other LiveKit secrets,
-    // which LiveKit rejects with "could not establish signal connection: invalid API key".
-    const missing = !error.status || error.status === 404 || error.status === 405 || (error.status === 502 && /invalid response/i.test(error.message || ''));
-    if (!missing) throw error;
-    const token = await accessToken();
-    const response = await fetch(config.livekit.directTokenEndpoint, {
-      method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(12000),
-      headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    });
-    if (!isJson(response)) throw error;
-    payload = await response.json();
-    if (!response.ok) throw Object.assign(new Error(payload?.error || 'LIVE unavailable'), { status: response.status });
+  if (direct) payload = await directToken(body);
+  else {
+    try { payload = await api(config.livekit.tokenEndpoint, { method: 'POST', body, timeout: 12000 }); }
+    catch (error) {
+      // Only when the site API itself is missing on this host (static mirror: an HTML 404/405) or unreachable, use the
+      // Edge Function. A real JSON answer from the site API ("session ended", "followers only"…) is final.
+      const routeMissing = [404, 405].includes(error.status) && /^HTTP \d+$/.test(error.message || '');
+      const missing = !error.status || routeMissing || (error.status === 502 && /invalid response/i.test(error.message || ''));
+      if (!missing) throw error;
+      try { payload = await directToken(body); } catch { throw error; }
+    }
   }
   if (!payload?.token || !payload?.serverUrl || !/^wss:/i.test(payload.serverUrl)) throw new Error('Invalid LIVE token.');
   tokenCache.set(live.room, { payload, at: Date.now() });
@@ -134,10 +146,13 @@ export class LiveSession extends Emitter {
 
     try { await room.connect(token.serverUrl, token.token, { autoSubscribe: true }); }
     catch (error) {
-      // A stale or mismatched token ("invalid API key", expired): drop it and connect once more with a fresh one.
       tokenCache.delete(this.live.room);
-      if (this.closed || !/signal|api key|token|unauthori[sz]ed|401/i.test(String(error?.message || ''))) throw error;
-      const fresh = await fetchToken(this.live, this.host);
+      if (this.closed || !(isKeyRejection(error) || /token|expired/i.test(String(error?.message || '')))) throw error;
+      // "invalid API key": this host signed with a key LiveKit does not know, so asking it again cannot help. The
+      // Supabase function signs with the LiveKit project's own secrets. An expired token just needs a fresh one.
+      let fresh;
+      if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true }); } catch {} }
+      fresh ||= await fetchToken(this.live, this.host);
       if (this.closed) return;
       await room.connect(fresh.serverUrl, fresh.token, { autoSubscribe: true });
     }

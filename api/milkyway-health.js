@@ -1,3 +1,5 @@
+import { livekitConfigured, livekitUrl, livekitUsable, livekitCredentialStatus } from './_lib/livekit.js';
+
 // Configuration self-check: GET /api/milkyway-health. Reports pass/fail per item and never returns secret values.
 const EXPECTED_SUPABASE_HOST = 'wpclkhgizbvxuvbhbwzs.supabase.co';
 const EXPECTED_LIVEKIT_URL = 'wss://masiyatunda-milkyway-live-mgh6b1np.livekit.cloud';
@@ -45,6 +47,17 @@ export default async function handler(req, res) {
     if (live.status === 200 && body) {
       add('LIVEKIT_API_KEY / LIVEKIT_API_SECRET / LIVEKIT_URL', body.available === true, body.available ? 'Credentials valid and LiveKit reachable.' : `Function reports "${body.reason || 'unavailable'}". Set the three secrets with \`supabase secrets set\` (LIVEKIT_URL must be ${EXPECTED_LIVEKIT_URL}).`);
     }
+  }
+
+  // This server's own LiveKit settings sign LIVE and call tokens. If LiveKit refuses them, the token route falls back to
+  // the Supabase function, so the check is a warning, but these are the settings to fix.
+  if (livekitConfigured()) {
+    const usable = await livekitUsable();
+    const url = livekitUrl();
+    add('Site LIVEKIT_URL', url === EXPECTED_LIVEKIT_URL, url === EXPECTED_LIVEKIT_URL ? 'Matches the MilkyWay LiveKit project.' : `Expected ${EXPECTED_LIVEKIT_URL}.`, 'warn');
+    add('Site LiveKit key accepted', usable, usable ? 'LiveKit accepts LIVEKIT_API_KEY / LIVEKIT_API_SECRET; tokens are signed on this server.' : `${livekitCredentialStatus().reason} Tokens come from the Supabase function until the key and secret of that LiveKit project are set here.`, 'warn');
+  } else {
+    add('Site LiveKit settings', false, 'LIVEKIT_URL, LIVEKIT_API_KEY or LIVEKIT_API_SECRET is not set on this server; tokens come from the Supabase function.', 'warn');
   }
 
   add('Gateway routes loaded', true, 'api/ handlers are mounted on this server.');

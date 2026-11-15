@@ -12,7 +12,7 @@ import { VerticalPager } from './pager.js';
 import { LiveSession } from './live-session.js';
 import { HostControls, InvitePrompt } from './live-controls.js';
 import { Sheet } from './sheet.js';
-import { h, icon, count, toast, paintAvatar, brandMark } from './dom.js';
+import { h, icon, count, toast, paintAvatar, brandMark, avatar } from './dom.js';
 
 const JOIN_DELAY = 200;
 const MAX_COMMENTS = 40;
@@ -445,25 +445,39 @@ export class LiveView {
     this.goSheet.open();
   }
 
+  // Compact, TikTok-style setup card: avatar + title on one line, Video/Audio tabs, two tap-to-change chips, one big button.
   #buildGoLiveSheet() {
     const sheet = new Sheet({ title: t('goLive'), className: 'go-live-sheet' });
-    const title = h('input', { class: 'field', type: 'text', maxlength: '80', placeholder: t('liveTitle') });
-    const mode = h('div', { class: 'segmented', role: 'radiogroup' },
-      h('label', {}, h('input', { type: 'radio', name: 'mwLiveMode', value: 'video', checked: true }), h('span', {}, t('video'))),
-      h('label', {}, h('input', { type: 'radio', name: 'mwLiveMode', value: 'audio' }), h('span', {}, t('audio'))));
-    const radios = (name, options) => h('div', { class: `segmented lc-seg lc-seg-${options.length}`, role: 'radiogroup' },
-      ...options.map(([value, label], i) => h('label', {}, h('input', { type: 'radio', name, value, checked: i === 0 }), h('span', {}, label))));
-    const guests = radios('mwLiveGuests', [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]]);
-    const comments = radios('mwLiveComments', [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]]);
-    const start = h('button', { class: 'pill-btn hot wide', type: 'submit' }, t('start'));
-    sheet.body.append(h('form', { class: 'stack', onsubmit: event => {
+    const me = { id: auth.userId, name: auth.name, avatar: profiles.peek(auth.userId)?.avatar || '' };
+    const title = h('input', { class: 'gl-title', type: 'text', maxlength: '80', placeholder: t('liveTitle'), 'aria-label': t('liveTitle'), enterkeyhint: 'go' });
+    let mode = 'video';
+    const tabs = ['video', 'audio'].map(value => h('button', {
+      class: `gl-tab${value === mode ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(value === mode),
+      onclick: () => { mode = value; tabs.forEach(tab => { const on = tab.dataset.mode === mode; tab.classList.toggle('on', on); tab.setAttribute('aria-selected', String(on)); }); },
+      'data-mode': value,
+    }, h('span', { html: value === 'video' ? icon.camera : icon.mic, 'aria-hidden': 'true' }), value === 'video' ? t('video') : t('audio')));
+    // Each chip cycles through its choices on tap.
+    const chip = (emoji, label, options) => {
+      let at = 0;
+      const value = h('b', {}, options[0][1]);
+      const node = h('button', { class: 'gl-chip', type: 'button', 'aria-label': label, onclick: () => {
+        at = (at + 1) % options.length; value.textContent = options[at][1]; node.dataset.value = options[at][0];
+      } }, h('span', { class: 'gl-chip-icon', 'aria-hidden': 'true' }, emoji), h('span', { class: 'gl-chip-text' }, h('small', {}, label), value));
+      node.dataset.value = options[0][0];
+      return node;
+    };
+    const guests = chip('👥', t('admission'), [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]]);
+    const comments = chip('💬', t('comments2'), [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]]);
+    const start = h('button', { class: 'gl-start', type: 'submit' }, h('i', { class: 'gl-dot', 'aria-hidden': 'true' }), t('goLive'));
+    sheet.body.append(h('form', { class: 'gl-form', onsubmit: event => {
       event.preventDefault();
       sheet.close();
-      this.#broadcast(title.value.trim(), mode.querySelector('input:checked').value, {
-        admission: guests.querySelector('input:checked').value,
-        comments: comments.querySelector('input:checked').value,
-      });
-    } }, title, mode, h('div', { class: 'lc-label' }, t('admission')), guests, h('div', { class: 'lc-label' }, t('comments2')), comments, start));
+      this.#broadcast(title.value.trim(), mode, { admission: guests.dataset.value, comments: comments.dataset.value });
+    } },
+    h('div', { class: 'gl-head' }, avatar(me, 44), title),
+    h('div', { class: 'gl-tabs', role: 'tablist' }, ...tabs),
+    h('div', { class: 'gl-chips' }, guests, comments),
+    start));
     return sheet;
   }
 

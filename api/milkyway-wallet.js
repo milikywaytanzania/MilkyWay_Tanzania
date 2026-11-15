@@ -1,6 +1,6 @@
 // MilkyWay Coins wallet API. Every action calls a SECURITY DEFINER function from
 // supabase/migrations/20261105_milkyway_api_wallet.sql as the signed-in user; the database enforces all money rules.
-import { ApiError, route, requireUuid } from './_lib/supa.js';
+import { ApiError, route, requireUuid, isMissingSchema } from './_lib/supa.js';
 import { loadLiveSettings } from './_lib/live-policy.js';
 
 const NETWORKS = ['mpesa', 'mixx', 'airtel', 'halopesa'];
@@ -88,7 +88,13 @@ export default route({
   },
 
   wallet: async ({ ctx, request }) => {
-    const overview = await rpc(ctx, 'mw_wallet_overview', {});
+    let overview;
+    try { overview = await rpc(ctx, 'mw_wallet_overview', {}); }
+    catch (error) {
+      // Until the Supabase repair SQL creates the wallet tables and mw_wallet_overview, show an empty wallet instead of an error popup.
+      if (!isMissingSchema(error)) throw error;
+      overview = { coins: 0, earned: 0, lifetimeEarned: 0, country: null, gifts: {}, topups: [], withdrawals: [], received: [], setupRequired: true };
+    }
     const detected = detectCountry(request);
     const country = overview?.country || detected;
     const { country: _saved, ...rest } = overview || {};

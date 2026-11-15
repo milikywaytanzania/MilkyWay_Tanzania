@@ -4,7 +4,7 @@
 // Everything else (calls, conversation rooms) and sites without those settings go through the Supabase
 // livekit-token Edge Function as before.
 import { authenticate } from './_lib/supa.js';
-import { livekitConfigured, livekitUrl, accessToken, CAMERA, MIC } from './_lib/livekit.js';
+import { livekitUrl, livekitUsable, accessToken, CAMERA, MIC } from './_lib/livekit.js';
 
 const DEFAULT_SUPABASE_URL = 'https://wpclkhgizbvxuvbhbwzs.supabase.co';
 
@@ -113,7 +113,9 @@ export default async function handler(req, res) {
   // With LiveKit configured on this site, every token is signed here with LIVEKIT_API_KEY / LIVEKIT_API_SECRET, so it
   // always matches LIVEKIT_URL. Tokens from the Supabase function are signed with that project's own secrets; when
   // those differ, LiveKit refuses the connection with "could not establish signal connection: invalid API key".
-  if (req.method === 'POST' && livekitConfigured() && /^wss?:\/\//i.test(livekitUrl()) && req.body && typeof req.body === 'object') {
+  // When LiveKit refuses this server's own key (checked once and cached), tokens come from the Supabase function instead
+  // of handing out tokens that are certain to fail.
+  if (req.method === 'POST' && req.body && typeof req.body === 'object' && await livekitUsable()) {
     const room = typeof req.body.room === 'string' ? req.body.room : typeof req.body.roomName === 'string' ? req.body.roomName : '';
     if ((req.body.action || 'token') === 'token') {
       if (LIVE_ROOM.test(room)) return liveToken(req, res, req.body);

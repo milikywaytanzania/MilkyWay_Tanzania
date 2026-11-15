@@ -5,7 +5,7 @@
 //
 // The caller connects to the LiveKit room while it rings, so audio/video flows the moment the other side accepts.
 import { config } from '../config.js';
-import { api, auth, supabase } from '../core/net.js';
+import { api, auth, supabase, accessToken } from '../core/net.js';
 import { bus } from '../core/events.js';
 import { loadLiveKit } from '../core/sdk.js';
 import { t } from '../core/i18n.js';
@@ -14,6 +14,18 @@ import { h, icon, avatar, toast } from './dom.js';
 import { playback } from './playback.js';
 
 const CALL_API = `${config.api.base}/milkyway-call`;
+
+// Call token straight from the Supabase livekit-token function (used when LiveKit refused the site-signed token).
+async function directCallToken(roomName, name) {
+  const token = await accessToken();
+  const response = await fetch(config.livekit.directTokenEndpoint, {
+    method: 'POST', signal: AbortSignal.timeout(12000), body: JSON.stringify({ roomName, room: roomName, action: 'token', name }),
+    headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || typeof data?.token !== 'string' || !/^wss?:/i.test(data?.serverUrl || '')) throw new Error(data?.error || t('callFailed'));
+  return data;
+}
 const RING_MS = 55_000;
 const callApi = (action, body) => api(`${CALL_API}?action=${action}`, body ? { method: 'POST', body, timeout: 15000 } : { timeout: 12000 });
 const getCall = id => api(`${CALL_API}?id=${encodeURIComponent(id)}`, { timeout: 10000 }).then(data => data?.call || null);
@@ -115,7 +127,15 @@ class CallScreen {
         .on(RoomEvent.LocalTrackPublished, publication => {
           if (publication.track?.kind === 'video') { this.local.replaceChildren(publication.track.attach()); }
         });
-      await room.connect(access.serverUrl, access.token, { autoSubscribe: true });
+      try { await room.connect(access.serverUrl, access.token, { autoSubscribe: true }); }
+      catch (error) {
+        // "invalid API key": the token was signed with a key this LiveKit project does not know. Ask the Supabase
+        // livekit-token function (it signs with the project's own secrets) and connect once more.
+        if (this.closed || !/api key|signal connection|unauthori[sz]ed|\b401\b/i.test(String(error?.message || ''))) throw error;
+        const retry = await directCallToken(`mw-conversation-${this.mode === 'video' ? 'video' : 'audio'}-${this.call.id}`, auth.name);
+        if (this.closed) return;
+        await room.connect(retry.serverUrl, retry.token, { autoSubscribe: true });
+      }
       if (this.closed) { room.disconnect(); return; }
       try {
         await room.localParticipant.setMicrophoneEnabled(true);

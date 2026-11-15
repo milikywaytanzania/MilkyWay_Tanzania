@@ -13,6 +13,28 @@ export const supabaseKey = request => envKey() || String(request?.headers?.apike
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const isUuid = value => typeof value === 'string' && UUID.test(value);
 
+/** True when Supabase answered "function/table/column not found": the repair SQL (supabase/milkyway-schema-repair.sql) is not applied yet. */
+export const isMissingSchema = error => /could not find the (function|table)|schema cache|does not exist/i.test(String(error?.message || ''));
+
+/** The registered owner account: always an administrator once its email is confirmed (same rule as mw_is_admin()). */
+export const OWNER_EMAIL = 'masiyatunda@gmail.com';
+export const isOwner = user => Boolean(user?.id && user.email_confirmed_at && String(user.email || '').trim().toLowerCase() === OWNER_EMAIL);
+
+/** Merges `data` into the signed-in user's own Supabase Auth metadata (allowed for every user, no SQL needed). */
+export async function updateUserMetadata(ctx, data) {
+  let response;
+  try {
+    response = await fetch(`${SUPABASE}/auth/v1/user`, {
+      method: 'PUT', headers: { apikey: ctx.key, Authorization: `Bearer ${ctx.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data }), signal: AbortSignal.timeout(10000),
+    });
+  } catch { throw new ApiError(503, 'Account service unavailable.'); }
+  const user = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status === 401 ? 401 : 503, user?.msg || user?.message || 'Could not save.');
+  if (ctx.user && user?.user_metadata) ctx.user.user_metadata = user.user_metadata;
+  return user?.user_metadata || {};
+}
+
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }

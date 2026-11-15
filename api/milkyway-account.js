@@ -1,4 +1,5 @@
-import { route, ApiError, SUPABASE, isUuid, requireUuid, eq, inList } from './_lib/supa.js';
+import { route, ApiError, SUPABASE, isUuid, requireUuid, eq, inList, isMissingSchema, isOwner, updateUserMetadata } from './_lib/supa.js';
+import { livekit } from './_lib/livekit.js';
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const uuidList = (value, max) => [...new Set((Array.isArray(value) ? value : String(value || '').split(',')).map(item => String(item).trim().toLowerCase()).filter(isUuid))].slice(0, max);
@@ -6,9 +7,29 @@ const needPost = method => { if (method !== 'POST') throw new ApiError(405, 'Use
 const clamp = (value, low, high, fallback) => { const number = Math.round(Number(value)); return Number.isFinite(number) ? Math.min(high, Math.max(low, number)) : fallback; };
 const header = (request, name) => String(request.headers?.[name] || '').trim();
 
-async function requireAdmin(ctx) {
-  if ((await ctx.rpc('mw_is_admin')) !== true) throw new ApiError(403, 'Not allowed.');
+// The owner account is recognised by its confirmed email from Supabase Auth even before mw_is_admin() exists.
+async function isAdminUser(ctx) {
+  if (isOwner(ctx.user)) return true;
+  try { return (await ctx.rpc('mw_is_admin')) === true; } catch { return false; }
 }
+async function requireAdmin(ctx) {
+  if (!(await isAdminUser(ctx))) throw new ApiError(403, 'Not allowed.');
+}
+async function requireOwner(ctx) {
+  if (!isOwner(ctx.user)) throw new ApiError(403, 'Only the app owner can do this.');
+}
+// Runs an owner/admin SQL function; explains what to do when the repair script has not created it yet.
+async function adminRpc(ctx, name, args) {
+  try { return await ctx.rpc(name, args); }
+  catch (error) {
+    if (isMissingSchema(error)) throw new ApiError(503, 'Run supabase/milkyway-schema-repair.sql in the Supabase SQL editor to enable this admin action.');
+    throw error;
+  }
+}
+const metaPreferences = user => {
+  const saved = user?.user_metadata?.mw_preferences;
+  return { ...DEFAULT_PREFERENCES, ...(saved && typeof saved === 'object' ? saved : {}) };
+};
 
 // Network country (from the hosting edge) first, then the region the device reports.
 function detectCountry(request) {
@@ -119,6 +140,8 @@ async function removeObject(ctx, key) {
   } catch { return false; }
 }
 
+const DEFAULT_PREFERENCES = Object.freeze({ isPrivate: false, allowMessages: 'everyone', notifyFollow: true, notifyEcho: true, notifySignal: true });
+
 export default route({
   // ----- account & wallet -----
   balance: async ({ ctx }) => {
@@ -126,14 +149,28 @@ export default route({
   },
 
   preferences: async ({ ctx, method, body }) => {
-    if (method === 'GET') return { preferences: await ctx.rpc('mw_get_preferences') };
+    if (method === 'GET') {
+      try { return { preferences: await ctx.rpc('mw_get_preferences') }; }
+      catch (error) {
+        // Until the Supabase repair SQL creates mw_get_preferences, show the defaults instead of an error popup.
+        if (!isMissingSchema(error)) throw error;
+        return { preferences: metaPreferences(ctx.user), setupRequired: true };
+      }
+    }
     needPost(method);
     const patch = {};
     for (const key of ['isPrivate', 'notifyFollow', 'notifyEcho', 'notifySignal']) {
       if (key in body) { if (typeof body[key] !== 'boolean') throw new ApiError(400, `Invalid ${key}.`); patch[key] = body[key]; }
     }
     if ('allowMessages' in body) patch.allowMessages = choice(body.allowMessages, ['everyone', 'followers', 'nobody'], 'message setting');
-    return { preferences: await ctx.rpc('mw_set_preferences', { p: patch }) };
+    try { return { preferences: await ctx.rpc('mw_set_preferences', { p: patch }) }; }
+    catch (error) {
+      // Until the repair SQL exists, keep the choice on the account itself (the same mirror mw_set_preferences writes).
+      if (!isMissingSchema(error)) throw error;
+      const preferences = { ...metaPreferences(ctx.user), ...patch };
+      await updateUserMetadata(ctx, { mw_preferences: preferences });
+      return { preferences, setupRequired: true };
+    }
   },
 
   privacy: {
@@ -170,14 +207,22 @@ export default route({
   },
 
   phone: async ({ ctx, method, body }) => {
-    if (method === 'GET') return { phone: (await privateRow(ctx, 'phone'))?.phone || '' };
+    if (method === 'GET') {
+      try { return { phone: (await privateRow(ctx, 'phone'))?.phone || '' }; }
+      catch (error) { if (!isMissingSchema(error)) throw error; return { phone: String(ctx.user.user_metadata?.mw_phone || '') }; }
+    }
     needPost(method);
     const phone = text(body.phone, 24);
-    if (!phone) { await savePrivate(ctx, { phone: null, phone_digits: null }); return { phone: '' }; }
+    if (!phone) { await savePrivate(ctx, { phone: null, phone_digits: null }).catch(error => { if (!isMissingSchema(error)) throw error; }); await updateUserMetadata(ctx, { mw_phone: '' }).catch(() => {}); return { phone: '' }; }
     const digits = phone.replace(/\D/g, '');
     if (!/^\+?[\d\s().-]{6,24}$/.test(phone) || digits.length < 8 || digits.length > 15) throw new ApiError(400, 'Enter a valid phone number.');
     try { await savePrivate(ctx, { phone, phone_digits: digits }); }
-    catch (error) { if (error instanceof ApiError && error.status === 409) throw new ApiError(409, 'This number is already linked to another account.'); throw error; }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 409) throw new ApiError(409, 'This number is already linked to another account.');
+      if (!isMissingSchema(error)) throw error;
+    }
+    // Also kept on the account, so it shows up even before the private-details table exists.
+    await updateUserMetadata(ctx, { mw_phone: phone }).catch(() => {});
     return { phone };
   },
 
@@ -191,8 +236,8 @@ export default route({
 
   // ----- administration, suspensions and appeals -----
   'admin-status': async ({ ctx }) => {
-    const isAdmin = (await ctx.rpc('mw_is_admin')) === true;
-    return { isAdmin, owner: isAdmin };
+    const owner = isOwner(ctx.user);
+    return { isAdmin: owner || await isAdminUser(ctx), owner };
   },
 
   'account-status': ({ ctx }) => ctx.rpc('mw_account_status'),
@@ -205,9 +250,76 @@ export default route({
     return { ok: true };
   },
 
-  'admin-users': ({ ctx, query }) => ctx.rpc('mw_admin_users', {
-    p_offset: clamp(query.offset, 0, 1e7, 0), p_q: text(query.q, 60), p_suspended: query.status === 'suspended',
-  }),
+  'admin-users': async ({ ctx, query }) => {
+    const offset = clamp(query.offset, 0, 1e7, 0), q = text(query.q, 60);
+    try { return await ctx.rpc('mw_admin_users', { p_offset: offset, p_q: q, p_suspended: query.status === 'suspended' }); }
+    catch (error) {
+      // Before the repair SQL: the owner still gets the profile list (suspension needs the SQL functions).
+      if (!isMissingSchema(error) || !isOwner(ctx.user)) throw error;
+      const search = q ? `&or=(display_name.ilike.*${encodeURIComponent(q.replace(/[*,()]/g, ''))}*,username.ilike.*${encodeURIComponent(q.replace(/[*,()]/g, ''))}*)` : '';
+      const rows = await ctx.rest(`mw_profiles?select=id,display_name,username,avatar_url&order=id&offset=${offset}&limit=25${search}`).catch(() => []);
+      return { total: null, setupRequired: true, users: (rows || []).map(row => ({ id: row.id, name: row.display_name, username: row.username, avatar: row.avatar_url, status: 'active', self: row.id === ctx.user.id })) };
+    }
+  },
+
+  // ----- owner dashboard (in-app Admin button): users, posts and live rooms -----
+  'admin-overview': async ({ ctx }) => {
+    await requireOwner(ctx);
+    const total = async path => {
+      try {
+        const response = await fetch(`${SUPABASE}/rest/v1/${path}`, { method: 'HEAD', headers: { apikey: ctx.key, Authorization: `Bearer ${ctx.token}`, Prefer: 'count=exact' }, signal: AbortSignal.timeout(8000) });
+        const range = response.headers.get('content-range') || '';
+        const value = Number(range.split('/')[1]);
+        return Number.isFinite(value) ? value : null;
+      } catch { return null; }
+    };
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const [users, posts, postsToday, lives] = await Promise.all([
+      total('mw_profiles?select=id'), total('mw_posts?select=id'),
+      total(`mw_posts?select=id&created_at=gte.${encodeURIComponent(since)}`), total('mw_video_live_sessions?select=id&is_live=eq.true'),
+    ]);
+    return { users, posts, postsToday, lives };
+  },
+
+  'admin-posts': async ({ ctx, query }) => {
+    await requireOwner(ctx);
+    const offset = clamp(query.offset, 0, 1e6, 0);
+    const rows = await ctx.rest(`mw_posts?select=id,author_id,author_name,caption,media_url,media_type,created_at&order=created_at.desc&offset=${offset}&limit=30`);
+    return { posts: rows || [] };
+  },
+
+  'admin-delete-post': async ({ ctx, method, body }) => {
+    needPost(method);
+    await requireOwner(ctx);
+    const id = requireUuid(String(body.id || ''), 'post');
+    // The owner's own posts go straight through row-level security; anyone else's needs the SQL function.
+    const own = await ctx.rest(`mw_posts?id=eq.${id}&author_id=eq.${ctx.user.id}`, { method: 'DELETE', returning: true }).catch(() => []);
+    if (!own?.length) await adminRpc(ctx, 'mw_admin_delete_post', { p_post: id });
+    return { ok: true, deleted: id };
+  },
+
+  'admin-lives': async ({ ctx }) => {
+    await requireOwner(ctx);
+    const rows = await ctx.rest('mw_video_live_sessions?select=id,room_name,host_id,title,scope,is_live,created_at&is_live=eq.true&order=created_at.desc&limit=50');
+    const hosts = [...new Set((rows || []).map(row => row.host_id).filter(isUuid))];
+    const profiles = hosts.length ? await ctx.rest(`mw_profiles?select=id,display_name,username,avatar_url&id=${inList(hosts)}`).catch(() => []) : [];
+    const byId = new Map((profiles || []).map(row => [row.id, row]));
+    return { lives: (rows || []).map(row => ({ ...row, host: byId.get(row.host_id) || null })) };
+  },
+
+  'admin-end-live': async ({ ctx, method, body }) => {
+    needPost(method);
+    await requireOwner(ctx);
+    const room = text(body.room, 120);
+    if (!/^mw-(audio|video)-live-[a-f0-9-]{36}$/i.test(room)) throw new ApiError(400, 'Invalid room.');
+    // Closing the LiveKit room disconnects everyone right away (uses the site's LiveKit credentials).
+    const closed = await livekit('DeleteRoom', room, {}).then(() => true, () => false);
+    let marked = true;
+    try { await ctx.rpc('mw_admin_end_live', { p_room: room }); }
+    catch (error) { if (!isMissingSchema(error)) throw error; marked = false; }
+    if (!closed && !marked) throw new ApiError(503, 'Could not end this LIVE. Run the Supabase repair SQL and check the LiveKit settings.');
+    return { ok: true, closed, marked };
+  },
 
   'admin-appeals': ({ ctx, query }) => ctx.rpc('mw_admin_appeals', { p_status: String(query.status || 'pending') }),
 
@@ -287,8 +399,21 @@ export default route({
       let country = detectCountry(request).country;
       if (!country && ctx.user) { try { country = (await privateRow(ctx, 'country'))?.country || ''; } catch { country = ''; } }
       const language = text(query.lang, 12).toLowerCase().split('-')[0];
-      const campaigns = await ctx.rpc('mw_active_ads', { p_lang: language, p_country: country });
-      return { campaigns: Array.isArray(campaigns) ? campaigns : [] };
+      try {
+        const campaigns = await ctx.rpc('mw_active_ads', { p_lang: language, p_country: country });
+        return { campaigns: Array.isArray(campaigns) ? campaigns : [] };
+      } catch (error) {
+        // Before the repair SQL creates mw_active_ads: read active campaigns directly and apply the same targeting.
+        if (!isMissingSchema(error)) throw error;
+        const now = Date.now();
+        const rows = await ctx.rest('mw_ad_campaigns?select=*&status=eq.approved&paid=is.true&order=created_at.desc&limit=50').catch(() => []);
+        const fits = (list, value) => !Array.isArray(list) || !list.length || !value || list.includes(value);
+        const campaigns = (rows || []).filter(row => (!row.starts_at || Date.parse(row.starts_at) <= now) && (!row.ends_at || Date.parse(row.ends_at) > now)
+          && fits(row.target_languages, language) && fits(row.target_countries, country)).map(campaignOut)
+          .map(({ id, business, title, description, mediaUrl, mediaType, destination, ctaLabel, audience, frequency, dismissDays, status, placement, skipAfter, startsAt, endsAt }) =>
+            ({ id, business, title, description, mediaUrl, mediaType, destination, ctaLabel, audience, frequency, dismissDays, status, placement, skipAfter, startsAt, endsAt }));
+        return { campaigns };
+      }
     },
   },
 
