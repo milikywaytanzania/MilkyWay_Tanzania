@@ -649,6 +649,8 @@ export class LiveView {
     stage.addEventListener('click', async event => {
       const button = event.target.closest('[data-act]');
       const act = button?.dataset.act;
+      // Any tap on the host's screen unlocks audio playback, so the host hears approved guests (mobile autoplay rules).
+      session.resumeAudio()?.catch?.(() => {});
       if (!act) return;
       if (streamControl(act, session, button, stage)) return;
       if (act === 'end') finish();

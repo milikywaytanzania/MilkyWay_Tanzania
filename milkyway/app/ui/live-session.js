@@ -13,6 +13,17 @@
 //          server calls UpdateParticipant); the guest's camera and mic switch on only after LiveKit confirms them.
 //          Stage states (session.stage): 'host' | 'audience' | 'requested' | 'invited' | 'joining' | 'guest'.
 //
+// Two-way audio: every client (host included) connects with autoSubscribe:true and also subscribes explicitly to any
+//          remote microphone track that is published, so the host always receives an approved guest's audio. Each
+//          remote audio track gets its own <audio autoplay> element in the page (RoomEvent.TrackSubscribed). Mobile
+//          browsers block playback until a tap, so the first tap anywhere unlocks it (room.startAudio + play()).
+//          Own microphone tracks are never attached locally, and capture uses echo cancellation, so nobody hears
+//          themselves back.
+// Co-host: when the host approves, the server grants the rights on the live connection (UpdateParticipant). If this
+//          connection does not hold canPublish right away, the guest immediately fetches a FRESH publisher token
+//          (canPublish:true, canSubscribe:true — signed only because the approval is on record) and reconnects with
+//          it, then camera + microphone switch on (enableCameraAndMicrophone).
+//
 // Live room signals: understands {type:'lv-heart'} / {type:'lv-sync'} signals and sends them.
 import { config } from '../config.js';
 import { t } from '../core/i18n.js';
@@ -145,10 +156,14 @@ export class LiveSession extends Emitter {
     });
     this.room = room;
     this.sdk = sdk;
+    this.#installAudioUnlock();
 
     room
+      // A remote track was published (host's stream for viewers, an approved guest's camera / mic for the host):
+      // make sure it is subscribed, even if auto-subscribe was skipped for it.
+      .on(RoomEvent.TrackPublished, (publication, participant) => this.#subscribe(publication, participant))
       .on(RoomEvent.TrackSubscribed, (track, _pub, participant) => this.#attach(track, participant, Track))
-      .on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => { track.detach().forEach(element => element.remove()); if (track.kind === 'video') this.emit('video-gone', participant.identity); })
+      .on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => { track.detach().forEach(element => { this.audioElements?.delete(element); element.remove(); }); if (track.kind === 'video') this.emit('video-gone', participant.identity); })
       .on(RoomEvent.LocalTrackPublished, publication => {
         // Hard guard: a viewer who is not an approved guest never publishes anything, whatever called it.
         if (!this.host && !this.onStage) { room.localParticipant.unpublishTrack(publication.track).catch(() => {}); return; }
@@ -208,7 +223,11 @@ export class LiveSession extends Emitter {
     if (!this.host && ![...room.remoteParticipants.values()].some(p => p.identity === this.live.host.id)) {
       this.hostTimer = setTimeout(() => this.#ended(), HOST_GRACE_MS);
     }
-    room.startAudio?.().catch(() => this.emit('audio-blocked', true));
+    // Tracks that were already published before this client connected (the host for viewers, seated guests).
+    for (const participant of room.remoteParticipants.values()) {
+      for (const publication of participant.trackPublications.values()) this.#subscribe(publication, participant);
+    }
+    this.resumeAudio();
     if (this.host) await this.#publish();
     else {
       // Zero auto-publishing: the viewer's microphone and camera are off on entry, always.
@@ -225,6 +244,8 @@ export class LiveSession extends Emitter {
     this.room = null;
     clearTimeout(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer);
     try { old?.removeAllListeners?.(); await old?.disconnect(); } catch {}
+    // The old connection's <audio> elements are dead now; the new one attaches fresh ones on TrackSubscribed.
+    this.audioElements?.forEach(element => element.remove()); this.audioElements?.clear();
     if (this.closed) return;
     this.onStage = false;
     this.rightsWaitSince = 0;
@@ -241,13 +262,22 @@ export class LiveSession extends Emitter {
       api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: this.self.state === 'speaker' ? 'leave-stage' : 'cancel-request' } }).catch(() => {});
       this.#signal(this.self.state === 'speaker' ? 'stage-left' : 'stage-cancel', { to: this.live.host.id });
     }
+    this.#removeAudioUnlock();
+    this.audioElements?.forEach(element => element.remove()); this.audioElements?.clear();
     try { await this.room?.disconnect(); } catch {}
     try { if (this.channel) (await supabase()).removeChannel(this.channel); } catch {}
     this.room = null; this.channel = null;
   }
 
-  /** Unlocks audio after a user gesture (mobile autoplay policies). */
-  resumeAudio() { return this.room?.startAudio?.(); }
+  /** Unlocks audio after a user gesture (mobile autoplay policies): LiveKit playback plus every remote <audio>. */
+  resumeAudio() {
+    const room = this.room;
+    if (!room) return Promise.resolve();
+    const plays = [...(this.audioElements || [])].filter(el => el.isConnected && el.paused).map(el => el.play().catch(() => {}));
+    return Promise.all([room.startAudio?.(), ...plays])
+      .then(() => this.emit('audio-blocked', !room.canPlaybackAudio))
+      .catch(() => this.emit('audio-blocked', true));
+  }
 
   // ---- Sending ---------------------------------------------------------------------------------------------
   /** Sends a comment. The server applies the host's rules first; only accepted comments reach other viewers. */
@@ -447,11 +477,16 @@ export class LiveSession extends Emitter {
         // Promoted: the host approved and LiveKit granted the rights. Camera and mic go live now.
         this.onStage = true;
         try {
-          if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: this.facing || 'user' });
-          if (!self.hostMuted) await lp.setMicrophoneEnabled(true);
+          // One getUserMedia call for both (a single permission prompt); the mic is published so the host hears them.
+          if (this.mode === 'video' && !self.hostMuted) await lp.enableCameraAndMicrophone();
+          else if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: this.facing || 'user' });
+          else if (!self.hostMuted) await lp.setMicrophoneEnabled(true);
         } catch (error) {
           if (error?.name === 'NotAllowedError') this.emit('error', Object.assign(new Error(t('cameraNeeded')), { status: 0 }));
+          // Camera refused / missing in a video Live: the guest still joins with their voice.
+          if (this.mode === 'video' && !self.hostMuted && !lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(true).catch(() => {});
         }
+        this.resumeAudio();
         this.emit('stage', { onStage: true });
       }
       if (self.hostMuted && lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(false).catch(() => {});
@@ -463,14 +498,16 @@ export class LiveSession extends Emitter {
     }
   }
 
-  // Approved but this connection has no publish rights yet. LiveKit usually pushes them within a second; otherwise ask
-  // the server to apply them again, and as a last resort reconnect with a fresh publisher token.
+  // Approved but this connection has no publish rights yet. The server grants them on the live connection before it
+  // records the approval, so they are normally here already. If not, the guest does not wait: after a short grace for
+  // LiveKit's push it asks for a FRESH publisher token (canPublish:true, canSubscribe:true, signed only because the
+  // host's approval is on record) and reconnects with it. A second failure falls back to asking for a resync.
   #awaitRights() {
     const now = Date.now();
     if (!this.rightsWaitSince) this.rightsWaitSince = now;
     const waited = now - this.rightsWaitSince;
     clearTimeout(this.rightsTimer);
-    if (waited > 9000 && !this.stageRejoined) {
+    if (waited > 1200 && !this.stageRejoined) {
       this.stageRejoined = true;
       setTimeout(() => { if (!this.closed) this.reconnect().catch(error => this.emit('error', error)); }, 0);
       return;
@@ -548,8 +585,29 @@ export class LiveSession extends Emitter {
     this.emit('removed');
   }
 
+  // Remote microphone / camera tracks are always received: viewers get the host, the host gets every approved guest
+  // (only they hold publish rights, so nobody else has a track to receive).
+  #subscribe(publication, participant) {
+    if (!participant || participant.isLocal || participant.identity === auth.userId) return;
+    if (!publication.isSubscribed && typeof publication.setSubscribed === 'function') publication.setSubscribed(true);
+  }
+
   #attach(track, participant, Track, local = false) {
-    if (track.kind === Track.Kind.Audio) { const el = track.attach(); el.hidden = true; this.emit('audio', el); return; }
+    if (track.kind === Track.Kind.Audio) {
+      // Never play our own microphone back (echo). Every remote voice — host or guest — gets its own <audio> element.
+      if (local || participant?.isLocal || participant?.identity === auth.userId) return;
+      const el = track.attach();
+      el.autoplay = true;
+      el.playsInline = true;
+      el.muted = false;
+      el.dataset.uid = participant?.identity || '';
+      (this.audioElements ||= new Set()).add(el);
+      this.emit('audio', el); // the UI puts it in the page
+      if (!el.isConnected) document.body.append(el); // no UI bound: keep it playing anyway
+      el.play?.().catch(() => this.emit('audio-blocked', true));
+      track.once?.('ended', () => { this.audioElements?.delete(el); });
+      return;
+    }
     const element = track.attach();
     element.playsInline = true;
     element.muted = true;
@@ -557,6 +615,18 @@ export class LiveSession extends Emitter {
     if (local) element.classList.add('local');
     if (local && this.facing !== 'environment') element.classList.add('mirror');
     this.emit('video', { element, participant: participant.identity, name: participant.name || '', local, isHost: participant.identity === this.live.host.id });
+  }
+
+  // Mobile autoplay: the first tap anywhere on the page after audio was blocked turns playback on.
+  #installAudioUnlock() {
+    if (this.unlockAudio) return;
+    this.unlockAudio = () => { if (!this.closed) this.resumeAudio(); };
+    for (const type of ['pointerdown', 'touchend', 'keydown']) document.addEventListener(type, this.unlockAudio, { capture: true, passive: true });
+  }
+  #removeAudioUnlock() {
+    if (!this.unlockAudio) return;
+    for (const type of ['pointerdown', 'touchend', 'keydown']) document.removeEventListener(type, this.unlockAudio, { capture: true });
+    this.unlockAudio = null;
   }
 
   #countViewers() {
