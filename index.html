@@ -5,7 +5,6 @@
 <meta name="theme-color" content="#051329">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script>if(matchMedia('(max-width: 767px)').matches)location.replace('/milkyway/'+location.search+location.hash);</script>
 <meta name="description" content="Masiyatunda Co. Ltd — Global Technology, Security, Mining, Energy and Logistics Solutions.">
 <title>Masiyatunda Co. Ltd | Global Technology & Security Solutions</title>
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -53,6 +52,7 @@ section, header, footer, main, .nav, .hero, .ticker { width:100%; max-width:100%
 .tools { min-width:0; flex-shrink:1; }
 
 header { position: sticky; top: 0; z-index: 1000; background: rgba(5, 19, 41, 0.95); border-bottom: 2px solid var(--gold); backdrop-filter: blur(10px); }
+.mobile-apk-download { display: none; }
 .nav { position:relative; max-width: 1250px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 20px; }
 .brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; font-weight: 800; font-size: 1.1rem; }
 .brand img { width: 48px; height: 48px; object-fit: contain; }
@@ -109,6 +109,17 @@ header { position: sticky; top: 0; z-index: 1000; background: rgba(5, 19, 41, 0.
 @media (max-width: 560px){ .app-dl span { display: none; } .app-dl { padding: 0 8px; } }
 @media (max-width: 440px){ .app-combo .app-btn .app-label { display: none; } .v3-lang { max-width: 74px; } }
 @media (max-width: 700px){ .app-btn { padding: 6px 10px; gap: 6px; min-width: 122px; } .app-btn img { width: 25px; height: 25px; flex: 0 0 25px; } .app-btn .app-label { font-size: 12px; display:inline-block; } }
+@media (max-width: 767px) {
+  .mobile-apk-download {
+    position: fixed; z-index: 2000; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: max-content; max-width: calc(100vw - 28px);
+    min-height: 52px; padding: 0 20px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px;
+    background: linear-gradient(110deg, #00d2ff, #d4af37 85%); color: #051329; box-shadow: 0 8px 28px rgba(0,0,0,.4), 0 0 18px rgba(0,210,255,.32);
+    font-size: 14px; font-weight: 900; text-decoration: none; white-space: nowrap;
+  }
+  .mobile-apk-download svg { width: 20px; height: 20px; flex: none; }
+  .mobile-apk-download:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+}
 .menu {
   display: inline-flex;
   align-items: center;
@@ -336,6 +347,10 @@ footer { background: #01040a; color: var(--muted); text-align: center; padding: 
     </div>
   </nav>
 </header>
+<a class="mobile-apk-download" href="/MilkyWay.apk" download="MilkyWay.apk" type="application/vnd.android.package-archive" aria-label="Download Android App (APK)">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v8.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-4.5 4.5a1 1 0 0 1-1.4 0l-4.5-4.5a1 1 0 1 1 1.4-1.4l2.8 2.8V4a1 1 0 0 1 1-1zM5 18a1 1 0 0 1 1 1v.5h12V19a1 1 0 1 1 2 0v1.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V19a1 1 0 0 1 1-1z"/></svg>
+  <span>Download Android App (APK)</span>
+</a>
 
 <main>
   <section id="home" class="hero">
