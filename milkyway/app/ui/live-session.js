@@ -108,6 +108,7 @@ export class LiveSession extends Emitter {
     this.status = null;      // last /live-room status: settings, self, members, messages
     this.onStage = false;    // a guest whose camera / mic are live right now
     this.approving = new Set();
+    this.stageAction = null;
     this.entered = false;    // true after the first connection of this visit; later joins are reconnects
     this.stage = host ? 'host' : 'audience';
   }
@@ -123,6 +124,18 @@ export class LiveSession extends Emitter {
     if (this.stage === next) return;
     this.stage = next;
     this.emit('stage-state', next);
+  }
+
+  #beginStageAction(action) {
+    if (this.stageAction) return false;
+    this.stageAction = action;
+    this.emit('stage-action', action);
+    return true;
+  }
+
+  #endStageAction() {
+    this.stageAction = null;
+    this.emit('stage-action', null);
   }
 
   // The viewer's stage state from the server record + LiveKit rights. 'joining' = approved, rights arriving.
@@ -371,6 +384,7 @@ export class LiveSession extends Emitter {
   // ---- Guest actions (viewers) ----------------------------------------------------------------------------
   /** Request to join: stored by the server, then signalled straight to the host's screen. */
   async requestStage() {
+    if (!this.#beginStageAction('request')) return;
     this.#setStage('requested'); // instant feedback; corrected by the server answer below
     try {
       const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'request' } });
@@ -380,17 +394,27 @@ export class LiveSession extends Emitter {
     } catch (error) {
       this.#setStage(this.#deriveStage());
       throw error;
+    } finally {
+      this.#endStageAction();
     }
   }
   /** Tap on "Requested": withdraws the request. */
   async cancelRequest() {
+    if (!this.#beginStageAction('cancel')) return;
     this.#setStage('audience');
     try {
       await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'cancel-request' } });
       this.#signal('stage-cancel', { to: this.live.host.id });
-    } finally { await this.refresh(); }
+    } catch (error) {
+      this.#setStage(this.#deriveStage());
+      throw error;
+    } finally {
+      try { await this.refresh(); }
+      finally { this.#endStageAction(); }
+    }
   }
   async acceptInvite() {
+    if (!this.#beginStageAction('accept-invite')) return;
     this.#setStage('requested');
     try {
       const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'accept-invite' } });
@@ -398,6 +422,7 @@ export class LiveSession extends Emitter {
       await this.refresh();
       return result?.state;
     } catch (error) { this.#setStage(this.#deriveStage()); throw error; }
+    finally { this.#endStageAction(); }
   }
   async declineInvite() {
     await this.control('decline-invite');
@@ -605,7 +630,12 @@ export class LiveSession extends Emitter {
       this.emit('audio', el); // the UI puts it in the page
       if (!el.isConnected) document.body.append(el); // no UI bound: keep it playing anyway
       el.play?.().catch(() => this.emit('audio-blocked', true));
-      track.once?.('ended', () => { this.audioElements?.delete(el); });
+      track.once?.('ended', () => {
+        this.audioElements?.delete(el);
+        el.pause();
+        el.srcObject = null;
+        el.remove();
+      });
       return;
     }
     const element = track.attach();

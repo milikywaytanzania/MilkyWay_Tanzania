@@ -193,6 +193,7 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 }
 .live-slide.host-stage { --live-lift: calc(14px + max(var(--live-sys-inset), 24px)); }
 .live-slide { background: url("../galaxy-starfield.svg") 0 0 / 480px 560px, radial-gradient(120% 70% at 50% 0%, #2d1a78 0%, var(--midnight) 55%, var(--void) 100%); }
+.live-audio { position: fixed; left: -2px; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .live-cover { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; }
 .live-cover-title { margin: 0; font-weight: 700; max-width: 80%; text-align: center; }
 .live-badge, .live-tag { background: var(--accent); color: #fff; font-weight: 800; font-size: 11px; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px; }

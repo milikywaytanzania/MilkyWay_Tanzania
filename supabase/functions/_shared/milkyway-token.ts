@@ -79,12 +79,30 @@ export async function milkywayToken(request: Request) {
         if (roomName.startsWith('mw-call-')) return json({ error: 'Call rooms require call authorization.' }, 403);
         const [record] = await query(`rest/v1/mw_video_live_sessions?room_name=eq.${encodeURIComponent(roomName)}&select=host_id,scope,is_live&limit=1`);
         if (!record?.is_live) return json({ error: 'This Live session is no longer available.' }, 404);
-        if (body.role === 'host' && record.host_id !== account.id) return json({ error: 'Only the host can broadcast.' }, 403);
-        if (record.scope === 'followers' && record.host_id !== account.id) {
+        const isHost = record.host_id === account.id;
+        if (body.role === 'host' && !isHost) return json({ error: 'Only the host can broadcast.' }, 403);
+        const [settingsRow] = await query(`rest/v1/mw_live_room_settings?room_name=eq.${encodeURIComponent(roomName)}&select=settings&limit=1`);
+        if (Array.isArray(settingsRow?.settings?.blockedIds) && settingsRow.settings.blockedIds.includes(String(account.id).toLowerCase())) {
+          return json({ error: 'The host removed you from this LIVE.' }, 403);
+        }
+        if (record.scope === 'followers' && !isHost) {
           const follows = await query(`rest/v1/mw_follows?follower_id=eq.${account.id}&following_id=eq.${record.host_id}&select=follower_id&limit=1`);
           if (!follows.length) return json({ error: 'This session is for followers only.' }, 403);
         }
-        canPublish = body.role === 'host' && record.host_id === account.id;
+        const [member] = isHost ? [] : await query(`rest/v1/mw_live_room_members?room_name=eq.${encodeURIComponent(roomName)}&user_id=eq.${account.id}&select=state,host_muted&limit=1`);
+        const broadcasting = body.role === 'host' && isHost;
+        const approvedGuest = !isHost && (body.stage === true || body.rejoin === true) && member?.state === 'speaker';
+        const sources = broadcasting
+          ? (audioOnly ? [2] : [1, 2])
+          : approvedGuest
+            ? (audioOnly
+              ? (member.host_muted ? [] : [2])
+              : member.host_muted ? [1] : [1, 2])
+            : [];
+        canPublish = sources.length > 0;
+        const token = new AccessToken(apiKey!, apiSecret!, { identity: account.id, name: String(body.name || 'MilkyWay user').slice(0, 80), ttl: '1h' });
+        token.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish, canPublishData: true, canPublishSources: sources });
+        return json({ token: await token.toJwt(), serverUrl, roomName, room: roomName });
       }
       const token = new AccessToken(apiKey!, apiSecret!, { identity: account.id, name: String(body.name || 'MilkyWay user').slice(0, 80), ttl: '1h' });
       token.addGrant({ roomJoin: true, room: roomName, canSubscribe: true, canPublish, canPublishData: true, canPublishSources: canPublish ? audioOnly ? [2] : [1, 2] : [] });

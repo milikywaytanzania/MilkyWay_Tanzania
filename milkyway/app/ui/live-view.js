@@ -219,7 +219,7 @@ function paintStageButton(slide, session) {
   const canAsk = settings.admission !== 'broadcast' && settings.allowRequests !== false;
   const label = stage === 'requested' ? t('requested') : stage === 'invited' ? t('joinAsGuest') : stage === 'joining' ? t('joiningStage') : t('requestJoin');
   r.stageBtn.hidden = stage === 'guest';
-  r.stageBtn.disabled = stage === 'joining';
+  r.stageBtn.disabled = stage === 'joining' || !!session.stageAction || (stage === 'audience' && !canAsk);
   r.stageBtn.classList.toggle('pending', stage === 'requested' || stage === 'joining');
   r.stageBtn.classList.toggle('invited', stage === 'invited');
   r.stageBtn.classList.toggle('closed', stage === 'audience' && !canAsk);
@@ -280,7 +280,7 @@ function renderRequests(slide, status) {
 /** Wires a LiveSession's events into a slide. Returns an unbind function. */
 function connectUi(slide, session) {
   const r = slide._refs;
-  const audio = h('div', { hidden: true });
+  const audio = h('div', { class: 'live-audio', 'aria-hidden': 'true' });
   slide.append(audio);
   const giftQueue = [];
   let showingGift = false;
@@ -341,6 +341,7 @@ function connectUi(slide, session) {
     session.on('comment-deleted', id => r.comments.querySelector(`[data-id="${cssId(id)}"]`)?.remove()),
     session.on('room', status => applyRoom(slide, session, status)),
     session.on('stage-state', () => paintStageButton(slide, session)),
+    session.on('stage-action', () => paintStageButton(slide, session)),
     session.on('media', media => paintMedia(slide, media)),
     session.on('stage', ({ onStage }) => { slide.classList.toggle('on-stage', onStage); if (onStage) toast(t('youAreOnStage')); }),
     session.on('error', error => { if (error?.message) toast(error.message); }),
@@ -558,6 +559,7 @@ export class LiveView {
   async #stageRequest() {
     const session = this.session;
     const slide = this.activeSlide;
+    if (session.stageAction) return;
     try {
       if (session.stage === 'requested') {
         if (slide) slide._selfCancelled = true;
