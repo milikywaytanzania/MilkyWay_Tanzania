@@ -262,7 +262,9 @@ export class LiveSession extends Emitter {
   async control(action, extra = {}, { quiet = false } = {}) {
     const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action, ...extra } });
     if (result?.settings && this.status) this.status = { ...this.status, settings: result.settings };
-    this.#nudge(this.host ? '' : 'host'); // a viewer's stage change only concerns the host
+    // A viewer's stage change only concerns the host. A host decision about one person (approve, reject, mute…)
+    // tells that person to re-read the room at once, so an approved guest goes live on stage without waiting.
+    this.#nudge(this.host ? '' : 'host', this.host && typeof extra.target === 'string' ? extra.target : '');
     if (!quiet) await this.refresh();
     return result;
   }
@@ -349,7 +351,7 @@ export class LiveSession extends Emitter {
   }
 
   // Tells everyone in the room that the room state changed, so they refresh now instead of at the next poll.
-  #nudge(to = '') { this.#broadcast({ t: 'room', id: crypto.randomUUID(), uid: auth.userId, to }, true); }
+  #nudge(to = '', target = '') { this.#broadcast({ t: 'room', id: crypto.randomUUID(), uid: auth.userId, to, ...(target ? { target } : {}) }, true); }
 
   #refreshSoon() {
     clearTimeout(this.nudgeTimer);
@@ -461,7 +463,10 @@ export class LiveSession extends Emitter {
     else if (event.t === 'gift') this.emit('gift', event);
     else if (event.t === 'like') { if (this.settings.likesEnabled !== false) this.emit('like', { n: Math.min(event.n || 1, 50) }); }
     else if (event.t === 'end') this.#ended();
-    else if (event.t === 'room') { if (!event.to || (event.to === 'host' && this.host)) this.#onNudge(); }
+    else if (event.t === 'room') {
+      if (!this.host && event.target && event.target === auth.userId && event.uid === this.live.host.id) this.#refreshSoon();
+      else if (!event.to || (event.to === 'host' && this.host)) this.#onNudge();
+    }
     else if (event.t === 'cam') this.emit('camera', { participant: event.uid, on: !!event.on });
     else if (event.t === 'decline' && this.host && event.uid) this.control('cancel-invite', { target: event.uid }, { quiet: true }).then(() => this.emit('declined', event.uid)).catch(() => {});
   }

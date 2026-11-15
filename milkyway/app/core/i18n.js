@@ -43,6 +43,8 @@ const strings = {
     like: 'Like', previous: 'Previous', next: 'Next', close: 'Close', post: 'Post', openPost: 'Open post', postOptions: 'Post options',
     deletePost: 'Delete post', tapAgainDelete: 'Tap again to delete', deleting: 'Deleting…', postDeleted: 'Post deleted',
     deleteFailed: 'Could not delete this post', imageUnavailable: 'This photo could not be loaded', connectionLost: 'Connection lost',
+    joinAsGuest: 'Join as guest', requestDeclined: 'The host declined your request', requestCancelled: 'Request cancelled', requestsToJoin: 'Requests to join',
+    approve: 'Approve', reject: 'Reject', seatsFull: 'All guest seats are full', guestApproved: 'Guest is joining the stage',
     wantsToJoin: 'wants to join as a guest', newRequests: 'new guest requests', removeGuestFirst: 'Remove a guest from the stage first',
     openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite',
     // Nova menu & settings
@@ -109,6 +111,8 @@ const strings = {
     like: 'Penda', previous: 'Iliyotangulia', next: 'Inayofuata', close: 'Funga', post: 'Post', openPost: 'Fungua post', postOptions: 'Chaguo za post',
     deletePost: 'Futa post', tapAgainDelete: 'Gusa tena kufuta', deleting: 'Inafuta…', postDeleted: 'Post imefutwa',
     deleteFailed: 'Imeshindikana kufuta post hii', imageUnavailable: 'Picha hii haikuweza kupakiwa', connectionLost: 'Muunganisho umekatika',
+    joinAsGuest: 'Jiunge kama mgeni', requestDeclined: 'Mwenyeji amekataa ombi lako', requestCancelled: 'Ombi limeghairiwa', requestsToJoin: 'Maombi ya kujiunga',
+    approve: 'Kubali', reject: 'Kataa', seatsFull: 'Viti vyote vya wageni vimejaa', guestApproved: 'Mgeni anajiunga jukwaani',
     wantsToJoin: 'anaomba kujiunga kama mgeni', newRequests: 'maombi mapya ya wageni', removeGuestFirst: 'Ondoa mgeni jukwaani kwanza',
     openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika',
     // Menyu ya Nova na mipangilio
