@@ -538,41 +538,49 @@ html[data-low-end] .call-btn { backdrop-filter: none; }
 .auth-lang { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .auth-lang .field { flex: 1; min-height: 40px; }
 
-/* Go LIVE setup: a small TikTok-style bottom card (slim title, toggle pills, grid chips, slim gradient button). */
-.go-live-sheet { max-width: 380px; margin: 0 auto; max-height: none; padding: 0 12px calc(10px + env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; }
-.go-live-sheet .sheet-grip { height: 14px; }
-.go-live-sheet .sheet-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.go-live-sheet .sheet-body { gap: 0; }
+/* Go LIVE setup: a small TikTok-style bottom card. Each row is its own block in a single-column stack (head row,
+   Video/Audio pills, guest chips, comment chips, Start) so nothing shares a line or overlaps. Heights are pinned with
+   min/max-height too, so global button rules (e.g. a 44px min-height) can't inflate chips into their neighbours. */
+.go-live-sheet { max-width: 380px; margin: 0 auto; max-height: calc(100dvh - 24px); padding: 0 14px calc(14px + env(safe-area-inset-bottom)); border-radius: 16px 16px 0 0; }
+@media (min-width: 720px) { .sheet.go-live-sheet { left: 50%; right: auto; width: 380px; margin-left: -190px; } }
+.go-live-sheet .sheet-grip { height: 14px; flex: none; }
+.go-live-sheet .sheet-title { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.go-live-sheet .sheet-body { gap: 0; overflow-x: hidden; }
 .go-live-sheet::after { display: none; }
-.gl-form { display: grid; gap: 8px; }
-.gl-head { display: flex; align-items: center; gap: 8px; }
+.gl-form { display: flex; flex-direction: column; gap: 12px; flex: none; width: 100%; min-width: 0; margin: 0; }
+.gl-form > * { position: relative; flex: none; min-width: 0; margin: 0; }
+.gl-head { display: flex; align-items: center; gap: 10px; width: 100%; }
 .gl-head .avatar { flex: none; }
-.gl-title { flex: 1; min-width: 0; height: 32px; padding: 0 12px; border-radius: 99px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07);
-  color: inherit; font: inherit; font-size: 13px; font-weight: 600; outline: none; }
-.gl-title:focus { border-color: rgba(254,44,85,.6); }
+.go-live-sheet .gl-title { flex: 1 1 auto; width: auto; min-width: 0; height: 36px; min-height: 36px; margin: 0; padding: 0 14px; border-radius: 99px;
+  border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07); color: inherit; font: inherit; font-size: 14px; font-weight: 600; outline: none; }
+.go-live-sheet .gl-title:focus { border-color: rgba(254,44,85,.6); }
 .gl-title::placeholder { color: rgba(255,255,255,.45); font-weight: 500; }
-.gl-modes { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 99px; background: rgba(255,255,255,.07); }
-.gl-modes .gl-chip { padding: 0 9px; height: 28px; border-radius: 99px; }
-.gl-modes .gl-chip svg { width: 13px; height: 13px; fill: currentColor; }
-.gl-group { display: grid; gap: 4px; }
-.gl-label { display: flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.5); }
-.gl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.gl-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; height: 30px; padding: 0 6px; border-radius: 8px;
-  font-size: 11.5px; font-weight: 700; line-height: 1.1; color: rgba(255,255,255,.65); background: rgba(255,255,255,.06); border: 1px solid transparent;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gl-chip.on { color: #fff; background: rgba(254,44,85,.16); border-color: rgba(254,44,85,.7); }
-.gl-modes .gl-chip.on { background: #fff; color: #111; border-color: transparent; }
+.gl-mode-row { display: flex; justify-content: center; width: 100%; }
+.gl-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; padding: 3px; border-radius: 99px; background: rgba(255,255,255,.07); }
+.gl-group { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.gl-label { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 10.5px; font-weight: 700; line-height: 1.2; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.5); }
+.gl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+.go-live-sheet .gl-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 32px; min-height: 32px; max-height: 32px;
+  margin: 0; padding: 0 6px; border-radius: 8px; font-size: 11.5px; font-weight: 700; line-height: 1.1; color: rgba(255,255,255,.65); background: rgba(255,255,255,.06);
+  border: 1px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.go-live-sheet .gl-modes .gl-chip { height: 30px; min-height: 30px; max-height: 30px; padding: 0 12px; border-radius: 99px; }
+.gl-chip > span { display: inline-flex; flex: none; }
+.gl-chip svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
+.go-live-sheet .gl-chip.on { color: #fff; background: rgba(254,44,85,.16); border-color: rgba(254,44,85,.7); }
+.go-live-sheet .gl-modes .gl-chip.on { background: #fff; color: #111; border-color: transparent; }
 .gl-chip:active { transform: scale(.97); }
-.gl-start { display: flex; align-items: center; justify-content: center; gap: 6px; height: 38px; margin-top: 2px; border-radius: 99px; font-size: 14px; font-weight: 800; color: #fff;
+.gl-actions { width: 100%; padding-top: 4px; z-index: 1; }
+.go-live-sheet .gl-start { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; min-height: 44px;
+  margin: 0; padding: 0 20px; border-radius: 99px; font-size: 15px; font-weight: 800; line-height: 1; color: #fff; pointer-events: auto;
   background: linear-gradient(90deg, #fe2c55, #ff5e8a 50%, #8b5cf6); box-shadow: 0 4px 14px rgba(254,44,85,.3); }
 .gl-start:active { transform: scale(.98); filter: brightness(.95); }
 .gl-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: livePulse 1.6s ease-in-out infinite; }
-html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) :is(.gl-title, .gl-modes, .gl-chip) { background: rgba(0,0,0,.05); }
-html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .gl-title { border-color: rgba(0,0,0,.12); }
+html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .go-live-sheet :is(.gl-title, .gl-modes, .gl-chip) { background: rgba(0,0,0,.05); }
+html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .go-live-sheet .gl-title { border-color: rgba(0,0,0,.12); }
 html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .gl-title::placeholder { color: rgba(0,0,0,.4); }
-html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) :is(.gl-chip, .gl-label) { color: rgba(0,0,0,.6); }
-html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .gl-chip.on { color: #c0103a; background: rgba(254,44,85,.1); }
-html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .gl-modes .gl-chip.on { background: #111; color: #fff; }
+html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .go-live-sheet :is(.gl-chip, .gl-label) { color: rgba(0,0,0,.6); }
+html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .go-live-sheet .gl-chip.on { color: #c0103a; background: rgba(254,44,85,.1); }
+html:is([data-mw-tone="light"],[data-mw-appearance="light"],[data-mw-appearance="sunlight"]) .go-live-sheet .gl-modes .gl-chip.on { background: #111; color: #fff; }
 
 /* Wallet onboarding (phone number + account name before the wallet / gift coins). */
 .wallet-setup-sheet { max-width: 440px; margin: 0 auto; }

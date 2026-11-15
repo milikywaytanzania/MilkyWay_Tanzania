@@ -445,8 +445,8 @@ export class LiveView {
     this.goSheet.open();
   }
 
-  // Compact, TikTok-style setup card: avatar + slim title, Video/Audio toggle pills side by side, guest and comment
-  // options as small grid chips, and one slim gradient Start button. No tall form, no spacers.
+  // Compact, TikTok-style setup card: avatar + slim title on the top row, Video/Audio toggle pills on their own row
+  // below it, guest and comment options as small grid chips, and one slim gradient Start button. No tall form, no spacers.
   #buildGoLiveSheet() {
     const sheet = new Sheet({ title: t('goLive'), className: 'go-live-sheet' });
     sheet.panel.setAttribute('aria-label', t('goLive'));
@@ -479,10 +479,11 @@ export class LiveView {
       sheet.close();
       this.#broadcast(title.value.trim(), mode.value, { admission: guests.value, comments: comments.value });
     } },
-    h('div', { class: 'gl-head' }, avatar(me, 36), title, mode),
+    h('div', { class: 'gl-head' }, avatar(me, 36), title),
+    h('div', { class: 'gl-mode-row' }, mode),
     group('👥', t('admission'), guests),
     group('💬', t('comments2'), comments),
-    start));
+    h('div', { class: 'gl-actions' }, start)));
     return sheet;
   }
 
