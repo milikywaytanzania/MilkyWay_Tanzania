@@ -497,6 +497,7 @@ footer { background: #01040a; color: var(--muted); text-align: center; padding: 
 
 <footer>
   © 2026 Masiyatunda Co. Ltd. All rights reserved.
+  <a href="/privacy.html">Privacy policy</a> · <a href="/account-deletion.html">Request account deletion</a>
 </footer>
 
 <div class="modal" id="adminModal">
@@ -552,6 +553,46 @@ const feed = document.getElementById('feed');
 const input = document.getElementById('mediaInput');
 const modal = document.getElementById('adminModal');
 
+function safeMediaUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    const url = new URL(value.trim(), location.origin);
+    if (!['https:', 'http:'].includes(url.protocol)) return '';
+    if (url.origin !== location.origin && url.protocol !== 'https:') return '';
+    return url.href;
+  } catch { return ''; }
+}
+function textNode(tag, className, value) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = value == null ? '' : String(value);
+  return node;
+}
+function mediaNode(value, isVideo, className, width = 800) {
+  const node = document.createElement(isVideo ? 'video' : 'img');
+  node.className = className;
+  if (isVideo) {
+    node.controls = true;
+    node.preload = 'metadata';
+    node.playsInline = true;
+    const source = safeMediaUrl(value);
+    if (source) node.src = source;
+  } else {
+    node.loading = 'lazy';
+    node.decoding = 'async';
+    node.alt = '';
+    const source = safeMediaUrl(value) || new URL('placeholder.svg', location.origin).href;
+    node.src = safeMediaUrl(window.MilkyWayMedia.image(source, width)) || source;
+  }
+  return node;
+}
+function emptyMessage(container, heading, detail = '') {
+  const box = textNode('div', 'empty', '');
+  box.append(textNode('h3', '', heading));
+  if (detail) box.append(textNode('p', '', detail));
+  container.replaceChildren(box);
+}
+
 // Fetch Posts from Supabase
 
 async function loadMediaGallery(){
@@ -565,13 +606,16 @@ async function loadMediaGallery(){
       let list=posts;
       if(filter==='image') list=posts.filter(p=>(p.media_type||'image')!=='video');
       if(filter==='video') list=posts.filter(p=>p.media_type==='video');
-      if(!list.length){ box.innerHTML='<div class="empty"><h3>Hakuna media bado</h3></div>'; return; }
-      box.innerHTML=list.map(p=>{
+      if(!list.length){ emptyMessage(box, 'Hakuna media bado'); return; }
+      box.replaceChildren(...list.map(p=>{
         const isVid=p.media_type==='video';
         const title=p.title_en||p.title||'';
-        const media=isVid?`<video class="media" src="${p.media_url}" controls preload="metadata" playsinline></video>`:`<img loading="lazy" decoding="async" class="media" src="${window.MilkyWayMedia.image(p.media_url,800)}" alt="">`;
-        return `<article class="post project-card-collapsible">${media}<div class="post-body project-details"><span class="tag">${isVid?'Video':'Picha'}</span><h3>${title}</h3></div></article>`;
-      }).join('');
+        const article=textNode('article','post project-card-collapsible','');
+        article.append(mediaNode(p.media_url,isVid,'media'),textNode('div','post-body project-details',''));
+        const body=article.lastElementChild;
+        body.append(textNode('span','tag',isVid?'Video':'Picha'),textNode('h3','',title));
+        return article;
+      }));
     }
     paint('all');
     document.querySelectorAll('.media-filter').forEach(btn=>{
@@ -583,7 +627,7 @@ async function loadMediaGallery(){
     });
   }catch(e){
     console.error(e);
-    box.innerHTML='<div class="empty"><h3>Hitilafu</h3><p>'+(e.message||e)+'</p></div>';
+    emptyMessage(box,'Hitilafu',e.message||e);
   }
 }
 
@@ -598,9 +642,9 @@ async function fetchPosts() {
 
     const feed = document.getElementById('feed');
     if (!feed) return;
-    feed.innerHTML = '';
+    feed.replaceChildren();
     if (!posts || posts.length === 0) {
-      feed.innerHTML = '<div class="empty"><h3>Hakuna miradi iliyopakiwa bado</h3><p>Tumia Admin kuweka picha au video.</p></div>';
+      emptyMessage(feed,'Hakuna miradi iliyopakiwa bado','Tumia Admin kuweka picha au video.');
       return;
     }
 
@@ -611,25 +655,37 @@ async function fetchPosts() {
       const isVid = p.media_type === 'video';
       const title = (typeof textFor === 'function') ? textFor(p, 'title') : (p.title_en || p.title || '');
       const desc = (typeof textFor === 'function') ? textFor(p, 'description') : (p.description_en || p.description || '');
-      const mediaTag = isVid
-        ? `<video class="media" src="${p.media_url}" controls preload="metadata" playsinline></video>`
-        : `<img loading="lazy" decoding="async" class="media" src="${window.MilkyWayMedia.image(p.media_url,800)}" alt="${(title||'').replace(/"/g,'&quot;')}">`;
-      return `<article class="post project-card-collapsible">${mediaTag}<div class="post-body project-details"><span class="tag">${p.category || ''}</span><h3>${title}</h3><p>${desc}</p></div></article>`;
+      const article=textNode('article','post project-card-collapsible','');
+      article.append(mediaNode(p.media_url,isVid,'media'));
+      const body=textNode('div','post-body project-details','');
+      body.append(textNode('span','tag',p.category||''),textNode('h3','',title),textNode('p','',desc));
+      article.append(body);
+      return article;
     }
 
-    let html = '';
+    const sections=[];
     if (photos.length) {
-      html += `<div class="media-split"><h3 class="media-split-title" data-i18n-dynamic="photos">📷 Picha / Photos (${photos.length})</h3><div class="feed feed-photos">${photos.map(card).join('')}</div></div>`;
+      const section=textNode('div','media-split','');
+      const heading=textNode('h3','media-split-title',`📷 Picha / Photos (${photos.length})`);
+      heading.dataset.i18nDynamic='photos';
+      section.append(heading,textNode('div','feed feed-photos',''));
+      section.lastElementChild.replaceChildren(...photos.map(card));
+      sections.push(section);
     }
     if (videos.length) {
-      html += `<div class="media-split"><h3 class="media-split-title" data-i18n-dynamic="videos">🎬 Video (${videos.length})</h3><div class="feed feed-videos">${videos.map(card).join('')}</div></div>`;
+      const section=textNode('div','media-split','');
+      const heading=textNode('h3','media-split-title',`🎬 Video (${videos.length})`);
+      heading.dataset.i18nDynamic='videos';
+      section.append(heading,textNode('div','feed feed-videos',''));
+      section.lastElementChild.replaceChildren(...videos.map(card));
+      sections.push(section);
     }
-    if (!html) html = '<div class="empty"><h3>Hakuna maudhui</h3></div>';
-    feed.innerHTML = html;
+    if (!sections.length) emptyMessage(feed,'Hakuna maudhui');
+    else feed.replaceChildren(...sections);
   } catch (err) {
     console.error(err);
     const feed = document.getElementById('feed');
-    if (feed) feed.innerHTML = '<div class="empty"><h3>Hitilafu kupakia miradi</h3><p>' + (err.message || err) + '</p></div>';
+    if (feed) emptyMessage(feed,'Hitilafu kupakia miradi',err.message||err);
   }
 }
 
@@ -894,7 +950,17 @@ async function loadV3Content(){
   const lg=document.getElementById('leadershipGrid');
   if(lg){
     const {data}=await _supabase.from('leaders').select('*').eq('published',true).order('sort_order',{ascending:true});
-    lg.innerHTML=(data||[]).map(x=>`<article class="v3-card"><img loading="lazy" decoding="async" src="${window.MilkyWayMedia.image(x.photo_url||'placeholder.svg',640)}" alt="${textFor(x,'name')}"><div class="v3-card-body"><span class="v3-tag">${textFor(x,'title')}</span><h3>${textFor(x,'name')}</h3><p>${textFor(x,'bio')}</p></div></article>`).join('') || `<div class="empty">${I18N[V3.lang].noContent}</div>`;
+    const leaders=(data||[]).map(x=>{
+      const card=textNode('article','v3-card','');
+      const image=mediaNode(x.photo_url||'placeholder.svg',false,'',640);
+      image.alt=textFor(x,'name');
+      const body=textNode('div','v3-card-body','');
+      body.append(textNode('span','v3-tag',textFor(x,'title')),textNode('h3','',textFor(x,'name')),textNode('p','',textFor(x,'bio')));
+      card.append(image,body);
+      return card;
+    });
+    if(leaders.length) lg.replaceChildren(...leaders);
+    else emptyMessage(lg,I18N[V3.lang].noContent);
   }
   const ng=document.getElementById('newsGrid');
   if(ng){
@@ -904,21 +970,46 @@ async function loadV3Content(){
     const videos=rows.filter(x=>x.media_type==='video');
     function newsCard(x){
       const isVid=x.media_type==='video';
-      const media=isVid
-        ? `<video src="${x.cover_url||''}" controls preload="metadata" playsinline style="width:100%;aspect-ratio:16/10;object-fit:cover;background:#000"></video>`
-        : `<img loading="lazy" decoding="async" src="${window.MilkyWayMedia.image(x.cover_url||'placeholder.svg',640)}" alt="${textFor(x,'title')}">`;
-      return `<article class="v3-card">${media}<div class="v3-card-body"><span class="v3-tag">${isVid?'Video':(x.category||'News')}</span><h3>${textFor(x,'title')}</h3><p>${textFor(x,'excerpt')}</p><button class="v3-action" onclick="openNews('${x.id}')">${I18N[V3.lang].readMore}</button></div></article>`;
+      const card=textNode('article','v3-card','');
+      const media=mediaNode(x.cover_url||'placeholder.svg',isVid,'',640);
+      if(isVid) media.style.cssText='width:100%;aspect-ratio:16/10;object-fit:cover;background:#000';
+      else media.alt=textFor(x,'title');
+      const body=textNode('div','v3-card-body','');
+      const open=textNode('button','v3-action',I18N[V3.lang].readMore);
+      open.type='button';
+      open.addEventListener('click',()=>window.openNews(x.id));
+      body.append(textNode('span','v3-tag',isVid?'Video':(x.category||'News')),textNode('h3','',textFor(x,'title')),textNode('p','',textFor(x,'excerpt')),open);
+      card.append(media,body);
+      return card;
     }
-    let html='';
-    if(photos.length) html+=`<h3 style="color:#d4af37;margin:0 0 12px">📷 Habari — Picha</h3><div class="v3-grid" style="margin-bottom:28px">${photos.map(newsCard).join('')}</div>`;
-    if(videos.length) html+=`<h3 style="color:#d4af37;margin:0 0 12px">🎬 Habari — Video</h3><div class="v3-grid">${videos.map(newsCard).join('')}</div>`;
-    ng.innerHTML=html || `<div class="empty">${I18N[V3.lang].noContent}</div>`;
+    const sections=[];
+    for(const [items,label,className] of [[photos,'📷 Habari — Picha','v3-grid news-photos'],[videos,'🎬 Habari — Video','v3-grid news-videos']]){
+      if(!items.length) continue;
+      const heading=textNode('h3','',label);
+      heading.style.cssText='color:#d4af37;margin:0 0 12px';
+      const grid=textNode('div',className,'');
+      if(items===photos) grid.style.marginBottom='28px';
+      grid.replaceChildren(...items.map(newsCard));
+      sections.push(heading,grid);
+    }
+    if(sections.length) ng.replaceChildren(...sections);
+    else emptyMessage(ng,I18N[V3.lang].noContent);
   }
 }
 window.openNews=async function(id){
   const {data:x}=await _supabase.from('news').select('*').eq('id',id).single();
   if(!x)return; trackEvent('news_view',id);
-  document.getElementById('projectDetail').innerHTML=`<span class="v3-tag">${x.category||'News'}</span><h2>${textFor(x,'title')}</h2><p>${new Date(x.created_at).toLocaleDateString()}</p><img class="v3-detail-media" src="${x.cover_url||'placeholder.svg'}"><p style="margin-top:15px;white-space:pre-wrap">${textFor(x,'body')||textFor(x,'excerpt')}</p>`;
+  const image=mediaNode(x.cover_url||'placeholder.svg',false,'v3-detail-media');
+  image.alt=textFor(x,'title');
+  const body=textNode('p','','');
+  body.style.cssText='margin-top:15px;white-space:pre-wrap';
+  body.textContent=textFor(x,'body')||textFor(x,'excerpt');
+  document.getElementById('projectDetail').replaceChildren(
+    textNode('span','v3-tag',x.category||'News'),
+    textNode('h2','',textFor(x,'title')),
+    textNode('p','',new Date(x.created_at).toLocaleDateString()),
+    image,
+    body);
   document.getElementById('projectDetailModal').classList.add('open');
   document.getElementById('projectDetailModal').setAttribute('aria-hidden','false');
 };
@@ -940,9 +1031,23 @@ fetchPosts=async function(){
 window.openProject=async function(p){
   trackEvent('project_view',p.id);
   const title=textFor(p,'title')||p.title, desc=textFor(p,'description')||p.description||'';
-  const media=p.media_type==='video'?`<video preload="metadata" class="v3-detail-media" src="${p.media_url}" controls></video>`:`<img class="v3-detail-media" src="${p.media_url}" alt="${title}">`;
-  const share=encodeURIComponent(location.href.split('#')[0]+'#project-'+p.id);
-  document.getElementById('projectDetail').innerHTML=`${media}<span class="v3-tag">${p.category}</span><h2>${title}</h2><p style="white-space:pre-wrap">${desc}</p><p>${new Date(p.created_at).toLocaleDateString()}</p><div class="v3-share"><button class="v3-action" onclick="navigator.clipboard?.writeText(decodeURIComponent('${share}'))">Copy Link</button><a class="v3-action" target="_blank" href="https://wa.me/?text=${encodeURIComponent(title+' '+location.href)}">WhatsApp</a></div>`;
+  const media=mediaNode(p.media_url,p.media_type==='video','v3-detail-media');
+  if(!p.media_type||p.media_type!=='video') media.alt=title||'';
+  const copy=textNode('button','v3-action','Copy Link');
+  copy.type='button';
+  copy.addEventListener('click',()=>navigator.clipboard?.writeText(location.href.split('#')[0]+'#project-'+encodeURIComponent(p.id)));
+  const whatsapp=document.createElement('a');
+  whatsapp.className='v3-action';
+  whatsapp.target='_blank';
+  whatsapp.rel='noopener';
+  whatsapp.href=`https://wa.me/?text=${encodeURIComponent(title+' '+location.href)}`;
+  whatsapp.textContent='WhatsApp';
+  const share=textNode('div','v3-share','');
+  share.append(copy,whatsapp);
+  const descNode=textNode('p','','');
+  descNode.style.whiteSpace='pre-wrap';
+  descNode.textContent=desc;
+  document.getElementById('projectDetail').replaceChildren(media,textNode('span','v3-tag',p.category),textNode('h2','',title),descNode,textNode('p','',new Date(p.created_at).toLocaleDateString()),share);
   document.getElementById('projectDetailModal').classList.add('open');
   document.getElementById('projectDetailModal').setAttribute('aria-hidden','false');
 };
@@ -1003,12 +1108,19 @@ document.getElementById('jobRequestForm')?.addEventListener('submit',async e=>{
 
   function renderMsgs(rows){
     if(!msgsEl) return;
-    if(!rows||!rows.length){ msgsEl.innerHTML='<p style="margin:0;font-size:13px;color:#64748b">Anza mazungumzo — au tumia WhatsApp chini.</p>'; return; }
-    msgsEl.innerHTML=rows.map(x=>{
+    if(!rows||!rows.length){
+      const empty=textNode('p','','Anza mazungumzo — au tumia WhatsApp chini.');
+      empty.style.cssText='margin:0;font-size:13px;color:#64748b';
+      msgsEl.replaceChildren(empty);
+      return;
+    }
+    msgsEl.replaceChildren(...rows.map(x=>{
       const mine=!x.is_from_admin;
       const t=x.created_at?new Date(x.created_at).toLocaleString():'';
-      return '<div class="chat-bubble '+(mine?'me':'them')+'">'+(x.message||'').replace(/</g,'&lt;')+'<small>'+(mine?'Wewe':'Masiyatunda')+' · '+t+'</small></div>';
-    }).join('');
+      const bubble=textNode('div',`chat-bubble ${mine?'me':'them'}`,'');
+      bubble.append(document.createTextNode(x.message||''),textNode('small','',`${mine?'Wewe':'Masiyatunda'} · ${t}`));
+      return bubble;
+    }));
     msgsEl.scrollTop=msgsEl.scrollHeight;
   }
 
@@ -1107,12 +1219,19 @@ if('serviceWorker' in navigator) addEventListener('load',()=>navigator.serviceWo
 
     function renderMsgs(rows){
       if(!msgsEl) return;
-      if(!rows||!rows.length){ msgsEl.innerHTML='<p style="margin:0;font-size:13px;color:#64748b">Anza mazungumzo — au tumia WhatsApp.</p>'; return; }
-      msgsEl.innerHTML=rows.map(function(x){
+      if(!rows||!rows.length){
+        const empty=textNode('p','','Anza mazungumzo — au tumia WhatsApp.');
+        empty.style.cssText='margin:0;font-size:13px;color:#64748b';
+        msgsEl.replaceChildren(empty);
+        return;
+      }
+      msgsEl.replaceChildren(...rows.map(function(x){
         var mine=!x.is_from_admin;
         var t=x.created_at?new Date(x.created_at).toLocaleString():'';
-        return '<div class="chat-bubble '+(mine?'me':'them')+'">'+(x.message||'').replace(/</g,'&lt;')+'<small>'+(mine?'Wewe':'Masiyatunda')+' · '+t+'</small></div>';
-      }).join('');
+        var bubble=textNode('div','chat-bubble '+(mine?'me':'them'),'');
+        bubble.append(document.createTextNode(x.message||''),textNode('small','',(mine?'Wewe':'Masiyatunda')+' · '+t));
+        return bubble;
+      }));
       msgsEl.scrollTop=msgsEl.scrollHeight;
     }
 

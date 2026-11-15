@@ -85,6 +85,9 @@ const SUPABASE_URL="https://wpclkhgizbvxuvbhbwzs.supabase.co";
 const SUPABASE_ANON_KEY="sb_publishable_GCFJ3Is8t8mdia4gLeHApg_M_3ez9xb";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
 const $=id=>document.getElementById(id);
+function safeAdminMediaUrl(value){if(typeof value!=='string'||!value.trim())return'';try{const url=new URL(value.trim(),location.origin);if(!['https:','http:'].includes(url.protocol))return'';if(url.origin!==location.origin&&url.protocol!=='https:')return'';return url.href}catch{return''}}
+function adminMediaNode(value,video=false,width=320){const media=document.createElement(video?'video':'img');media.className='thumb';if(video){media.controls=true;media.preload='metadata';const source=safeAdminMediaUrl(value);if(source)media.src=source}else{media.loading='lazy';media.decoding='async';media.alt='';const original=safeAdminMediaUrl(value)||new URL('/placeholder.svg',location.origin).href;media.src=safeAdminMediaUrl(window.MilkyWayMedia?.image(original,width))||original}return media}
+function adminEmpty(container,message){const notice=document.createElement('p');notice.className='muted';notice.textContent=message;container.replaceChildren(notice)}
 const setBadge=(identity,count)=>{const element=$(identity);if(!element)return;element.textContent=count;element.style.display=count>0?'inline':'none'};
 let accessGeneration=0;
 async function check(){
@@ -133,7 +136,7 @@ const openQuotes=quoteRows.filter(x=>!['accepted','rejected','completed','expire
 $('openQuoteCount').textContent=openQuotes;
 setBadge('msgBadge',unread);setBadge('artsBadge',artsUnread);setBadge('reqBadge',newReq);setBadge('quoteBadge',openQuotes);
 const counts={};rows.filter(x=>x.event_type==='project_view'||x.event_type==='news_view').forEach(x=>counts[x.content_id]=(counts[x.content_id]||0)+1);
-$('topContent').innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>`<div class="item"><div style="flex:1">${x[0]}</div><strong>${x[1]} views</strong></div>`).join('')||'<p class="muted">No content views yet.</p>';
+$('topContent').innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(x=>`<div class="item"><div style="flex:1">${escapeHtml(x[0])}</div><strong>${x[1]} views</strong></div>`).join('')||'<p class="muted">No content views yet.</p>';
 const qa=[
  ['arts','🎨 Sanaa',artsUnread+' unread'],['arts','👤 Artists', 'Manage artists · <span id="artistPendingQuick">0</span> pending'],['messages','💬 Messages',unread+' unread'],['requests','📋 Job Requests',newReq+' new'],['crm','💰 CRM / Quotes',openQuotes+' open'],['projects','🛠 Projects','Manage projects'],['media','📰 Media','Manage media']
 ];
@@ -158,11 +161,11 @@ msgRows.filter(x=>!x.is_from_admin).slice(0,8).forEach(x=>activity.push({t:x.cre
 quoteRows.slice(0,6).forEach(x=>activity.push({t:x.created_at,icon:'💰',title:'Quotation',desc:`${x.quote_number||'-'} · ${x.currency||'TZS'} ${Number(x.total||0).toLocaleString()}`,panel:'crm'}));
 customerRows.slice(0,6).forEach(x=>activity.push({t:x.created_at,icon:'👤',title:'Customer account',desc:`${x.full_name||'-'}${x.company_name?' · '+x.company_name:''}`,panel:'crm'}));
 activity.sort((a,b)=>new Date(b.t)-new Date(a.t));
-$('recentActivity').innerHTML=activity.slice(0,12).map(a=>`<button class="activity-row" type="button" style="width:100%;text-align:left;background:none;border:0;cursor:pointer" onclick="openPanel('${a.panel}')"><span class="activity-dot"></span><span><strong>${a.icon} ${a.title}</strong><br><span class="muted">${a.desc}</span><br><small class="muted">${new Date(a.t).toLocaleString()}</small></span></button>`).join('')||'<p class="muted">Hakuna activity mpya bado.</p>';
+$('recentActivity').innerHTML=activity.slice(0,12).map(a=>`<button class="activity-row" type="button" style="width:100%;text-align:left;background:none;border:0;cursor:pointer" onclick="openPanel('${a.panel}')"><span class="activity-dot"></span><span><strong>${a.icon} ${a.title}</strong><br><span class="muted">${escapeHtml(a.desc)}</span><br><small class="muted">${new Date(a.t).toLocaleString()}</small></span></button>`).join('')||'<p class="muted">Hakuna activity mpya bado.</p>';
 function deviceOf(ua){if(!ua)return 'Unknown';ua=ua.toLowerCase();if(/mobile|android|iphone|ipad|ipod/.test(ua))return 'Phone/Tablet';if(/windows|macintosh|linux/.test(ua))return 'Computer';return 'Other';}
 function fmt(ts){try{return new Date(ts).toLocaleString()}catch(e){return ts||''}}
 const recent=rows.slice(0,50);
-$('recentVisits').innerHTML=recent.length?`<table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;border-bottom:2px solid #dbe3ec"><th style="padding:8px">Time</th><th style="padding:8px">Device</th><th style="padding:8px">Page</th><th style="padding:8px">Lang</th><th style="padding:8px">Source</th></tr></thead><tbody>${recent.map(x=>`<tr style="border-bottom:1px solid #eef2f7"><td style="padding:8px;white-space:nowrap">${fmt(x.created_at)}</td><td style="padding:8px">${deviceOf(x.user_agent)}</td><td style="padding:8px">${x.path||x.event_type||'-'}</td><td style="padding:8px">${x.language||'-'}</td><td style="padding:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis">${x.referrer?x.referrer.replace(/^https?:\/\//,''):'Direct'}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No visits recorded yet. Open the public website once, then refresh admin.</p>';
+$('recentVisits').innerHTML=recent.length?`<table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;border-bottom:2px solid #dbe3ec"><th style="padding:8px">Time</th><th style="padding:8px">Device</th><th style="padding:8px">Page</th><th style="padding:8px">Lang</th><th style="padding:8px">Source</th></tr></thead><tbody>${recent.map(x=>`<tr style="border-bottom:1px solid #eef2f7"><td style="padding:8px;white-space:nowrap">${fmt(x.created_at)}</td><td style="padding:8px">${deviceOf(x.user_agent)}</td><td style="padding:8px">${escapeHtml(x.path||x.event_type||'-')}</td><td style="padding:8px">${escapeHtml(x.language||'-')}</td><td style="padding:8px;max-width:180px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(x.referrer?x.referrer.replace(/^https?:\/\//,''):'Direct')}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No visits recorded yet. Open the public website once, then refresh admin.</p>';
 }
 document.getElementById('adminBell')?.addEventListener('click',()=>document.getElementById('notifyPanel')?.classList.toggle('open'));
 document.addEventListener('click',e=>{const p=document.getElementById('notifyPanel'),b=document.getElementById('adminBell');if(p&&b&&!p.contains(e.target)&&!b.contains(e.target))p.classList.remove('open')});
@@ -175,49 +178,75 @@ $('publishLeader').onclick=async()=>{try{let f=$('lf').files[0],url=null;if(f){l
 $('publishArt').onclick=async()=>{try{let f=$('af').files[0];if(!f)throw Error('Select media');let path='arts/'+crypto.randomUUID()+'-'+f.name.replace(/[^a-zA-Z0-9._-]/g,'-');let url=await upload('portfolio',f,path);let {error}=await sb.from('arts_gallery').insert({title_en:$('at_en').value,title_sw:$('at_sw').value,description_en:$('ad_en').value,description_sw:$('ad_sw').value,category:$('ac').value,artist_id:$('artArtist').value||null,media_url:url,media_type:f.type.startsWith('video/')?'video':'image',published:true});if(error)throw error;$('artMsg').textContent='Sanaa imechapishwa';$('af').value='';refresh()}catch(e){$('artMsg').textContent=e.message}}
 $('publishMedia').onclick=async()=>{try{let f=$('mf').files[0];if(!f)throw Error('Select media');let path='site-media/'+crypto.randomUUID()+'-'+f.name.replace(/[^a-zA-Z0-9._-]/g,'-');let url=await upload('portfolio',f,path);let {error}=await sb.from('site_media').insert({title_en:$('mt_en').value,title_sw:$('mt_sw').value,description_en:$('md_en').value,description_sw:$('md_sw').value,category:$('mc').value,media_url:url,media_type:f.type.startsWith('video/')?'video':'image',published:true});if(error)throw error;$('mediaMsg').textContent='Media imechapishwa';$('mf').value='';refresh()}catch(e){$('mediaMsg').textContent=e.message}}
 
-async function projects(){let {data}=await sb.from('posts').select('*').order('created_at',{ascending:false});$('projectList').innerHTML=(data||[]).map(x=>`<div class="item"><${x.media_type==='video'?'video':'img'} class="thumb" src="${x.media_url}" ${x.media_type==='video'?'controls':''}></${x.media_type==='video'?'video':'img'}><div style="flex:1"><strong>${x.title_en||x.title}</strong><br><span class="muted">${x.category}</span></div><button class="btn danger" onclick="del('posts','${x.id}')">Delete</button></div>`).join('')}
-async function news(){let {data}=await sb.from('news').select('*').order('created_at',{ascending:false});$('newsList').innerHTML=(data||[]).map(x=>{const isVid=(x.media_type==='video')||/\.(mp4|webm|mov)(\?|$)/i.test(x.cover_url||'');const media=isVid?`<video preload="metadata" class="thumb" src="${x.cover_url||''}" muted></video>`:`<img loading="lazy" decoding="async" class="thumb" src="${window.MilkyWayMedia.image(x.cover_url||'placeholder.svg',320)}">`;return `<div class="item">${media}<div style="flex:1"><strong>${x.title_en||x.title||''}</strong><br><span class="muted">${x.category||''} · ${isVid?'Video':'Picha'}</span></div><button class="btn danger" onclick="del('news','${x.id}')">Delete</button></div>`;}).join('')||'<p class="muted">Hakuna habari.</p>'}
-async function leaders(){let {data}=await sb.from('leaders').select('*').order('sort_order',{ascending:true});$('leaderList').innerHTML=(data||[]).map(x=>`<div class="item"><img loading="lazy" decoding="async" class="thumb" src="${window.MilkyWayMedia.image(x.photo_url||'placeholder.svg',320)}"><div style="flex:1"><strong>${x.name_en||x.name}</strong><br><span class="muted">${x.title_en||x.title}</span></div><button class="btn danger" onclick="del('leaders','${x.id}')">Delete</button></div>`).join('')}
-async function arts(){let {data,error}=await sb.from('arts_gallery').select('*').order('created_at',{ascending:false});if(error){$('artsList').innerHTML='<p class="muted">'+error.message+'</p>';return}$('artsList').innerHTML=(data||[]).map(x=>{const media=x.media_type==='video'?`<video preload="metadata" class="thumb" src="${x.media_url}" controls></video>`:`<img loading="lazy" decoding="async" class="thumb" src="${window.MilkyWayMedia.image(x.media_url,320)}">`;return `<div class="item">${media}<div style="flex:1"><strong>${x.title_en||x.title_sw||''}</strong><br><span class="muted">${x.category||''}</span></div><button class="btn danger" onclick="del('arts_gallery','${x.id}')">Delete</button></div>`}).join('')||'<p class="muted">Hakuna sanaa.</p>'}
-async function media(){let {data,error}=await sb.from('site_media').select('*').order('created_at',{ascending:false});if(error){$('mediaList').innerHTML='<p class="muted">'+error.message+'</p>';return}$('mediaList').innerHTML=(data||[]).map(x=>{const media=x.media_type==='video'?`<video preload="metadata" class="thumb" src="${x.media_url}" controls></video>`:`<img loading="lazy" decoding="async" class="thumb" src="${window.MilkyWayMedia.image(x.media_url,320)}">`;return `<div class="item">${media}<div style="flex:1"><strong>${x.title_en||x.title_sw||''}</strong><br><span class="muted">${x.category||''}</span></div><button class="btn danger" onclick="del('site_media','${x.id}')">Delete</button></div>`}).join('')||'<p class="muted">Hakuna media.</p>'}
+async function contentRows(table,elementId,order,emptyText,titleOf,subtitleOf,mediaOf,videoOf){
+  const {data,error}=await sb.from(table).select('*').order(order.column,{ascending:order.ascending});
+  const container=$(elementId);
+  if(error){adminEmpty(container,error.message);return}
+  const rows=(data||[]).map(item=>{
+    const row=document.createElement('div');row.className='item';
+    row.append(adminMediaNode(mediaOf(item),videoOf(item)));
+    const details=document.createElement('div');details.style.flex='1';
+    const title=document.createElement('strong');title.textContent=titleOf(item)||'';
+    const subtitle=document.createElement('span');subtitle.className='muted';subtitle.textContent=subtitleOf(item)||'';
+    details.append(title,document.createElement('br'),subtitle);
+    const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Delete';
+    remove.addEventListener('click',()=>window.del(table,item.id));
+    row.append(details,remove);
+    return row;
+  });
+  if(rows.length)container.replaceChildren(...rows);else adminEmpty(container,emptyText);
+}
+async function projects(){return contentRows('posts','projectList',{column:'created_at',ascending:false},'Hakuna miradi.',item=>item.title_en||item.title,item=>item.category,item=>item.media_url,item=>item.media_type==='video')}
+async function news(){return contentRows('news','newsList',{column:'created_at',ascending:false},'Hakuna habari.',item=>item.title_en||item.title,item=>`${item.category||''} · ${item.media_type==='video'?'Video':'Picha'}`,item=>item.cover_url,item=>item.media_type==='video'||/\.(mp4|webm|mov)(\?|$)/i.test(item.cover_url||''))}
+async function leaders(){return contentRows('leaders','leaderList',{column:'sort_order',ascending:true},'Hakuna viongozi.',item=>item.name_en||item.name,item=>item.title_en||item.title,item=>item.photo_url,()=>false)}
+async function arts(){return contentRows('arts_gallery','artsList',{column:'created_at',ascending:false},'Hakuna sanaa.',item=>item.title_en||item.title_sw,item=>item.category,item=>item.media_url,item=>item.media_type==='video')}
+async function media(){return contentRows('site_media','mediaList',{column:'created_at',ascending:false},'Hakuna media.',item=>item.title_en||item.title_sw,item=>item.category,item=>item.media_url,item=>item.media_type==='video')}
 async function requests(){
-let {data}=await sb.from('job_requests').select('*').order('created_at',{ascending:false});
-const base=SUPABASE_URL+'/storage/v1/object/public/portfolio/';
-$('requestList').innerHTML=(data||[]).map(x=>{
-  let att='';
-  if(x.attachment_path){
-    const url=base+x.attachment_path;
-    const isImg=/\.(jpg|jpeg|png|gif|webp)$/i.test(x.attachment_path);
-    att=isImg
-      ? `<div style="margin:10px 0"><a href="${url}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${url}" alt="Attachment" style="max-width:220px;max-height:160px;border-radius:8px;border:1px solid #dbe3ec;object-fit:cover;display:block"></a><a href="${url}" target="_blank" class="muted" style="font-size:13px">Fungua picha</a></div>`
-      : `<div style="margin:10px 0"><a class="btn" href="${url}" target="_blank" rel="noopener">Fungua faili</a></div>`;
-  } else {
-    att='<p class="muted" style="margin:6px 0">Hakuna picha/faili</p>';
-  }
-  const detailsId='jr-'+x.id;
-  return `<div class="item" style="display:block">
-    <strong>${x.request_code||'-'}</strong> — ${x.full_name||''} — ${x.service||''}<br>
-    <span class="muted">${x.created_at?new Date(x.created_at).toLocaleString():''} · ${x.phone||''} · ${x.email||''} · ${x.location||''}</span>
-    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn" type="button" onclick="document.getElementById('${detailsId}').style.display=document.getElementById('${detailsId}').style.display==='none'?'block':'none'">Soma</button>
-      <button class="btn danger" type="button" onclick="delReq('${x.id}')">Futa</button>
-      <select onchange="statusReq('${x.id}',this.value)">
-        <option ${x.status==='new'?'selected':''}>new</option>
-        <option ${x.status==='reviewing'?'selected':''}>reviewing</option>
-        <option ${x.status==='quoted'?'selected':''}>quoted</option>
-        <option ${x.status==='approved'?'selected':''}>approved</option>
-        <option ${x.status==='in_progress'?'selected':''}>in_progress</option>
-        <option ${x.status==='completed'?'selected':''}>completed</option>
-        <option ${x.status==='rejected'?'selected':''}>rejected</option>
-      </select>
-    </div>
-    <div id="${detailsId}" style="display:none;margin-top:10px;padding:12px;background:#f8fafc;border-radius:8px">
-      <p><strong>Maelezo:</strong> ${x.description||'-'}</p>
-      ${att}
-      <p class="muted">Company: ${x.company_name||'-'} · Lang: ${x.language||'-'}</p>
-    </div>
-  </div>`;
-}).join('')||'<p class="muted">Hakuna maombi bado.</p>';
+const {data,error}=await sb.from('job_requests').select('*').order('created_at',{ascending:false});
+const list=$('requestList');
+if(error){adminEmpty(list,error.message);return}
+const statusNames=['new','reviewing','quoted','approved','in_progress','completed','rejected'];
+const rows=(data||[]).map(request=>{
+  const card=document.createElement('div');card.className='item';card.style.display='block';
+  const heading=document.createElement('strong');heading.textContent=request.request_code||'-';
+  card.append(heading,document.createTextNode(` — ${request.full_name||''} — ${request.service||''}`),document.createElement('br'));
+  const contact=document.createElement('span');contact.className='muted';
+  contact.textContent=`${request.created_at?new Date(request.created_at).toLocaleString():''} · ${request.phone||''} · ${request.email||''} · ${request.location||''}`;
+  card.append(contact);
+  const controls=document.createElement('div');controls.style.cssText='margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+  const details=document.createElement('div');details.style.cssText='display:none;margin-top:10px;padding:12px;background:#f8fafc;border-radius:8px';
+  const toggle=document.createElement('button');toggle.type='button';toggle.className='btn';toggle.textContent='Soma';
+  toggle.addEventListener('click',()=>{details.style.display=details.style.display==='none'?'block':'none'});
+  const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Futa';
+  remove.addEventListener('click',()=>window.delReq(request.id));
+  const status=document.createElement('select');
+  for(const name of statusNames){const option=document.createElement('option');option.value=name;option.textContent=name;option.selected=request.status===name;status.append(option)}
+  status.addEventListener('change',()=>window.statusReq(request.id,status.value));
+  controls.append(toggle,remove,status);
+  const description=document.createElement('p');
+  const label=document.createElement('strong');label.textContent='Maelezo:';
+  description.append(label,document.createTextNode(` ${request.description||'-'}`));
+  const company=document.createElement('p');company.className='muted';
+  company.textContent=`Company: ${request.company_name||'-'} · Lang: ${request.language||'-'}`;
+  details.append(description,company);
+  if(request.attachment_path){
+    const path=request.attachment_path.split('/').map(encodeURIComponent).join('/');
+    const url=safeAdminMediaUrl(`${SUPABASE_URL}/storage/v1/object/public/portfolio/${path}`);
+    if(url){
+      const attachment=document.createElement('div');attachment.style.margin='10px 0';
+      const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener';
+      const image=/\.(jpg|jpeg|png|gif|webp)$/i.test(request.attachment_path);
+      if(image){const preview=document.createElement('img');preview.loading='lazy';preview.decoding='async';preview.src=url;preview.alt='Attachment';preview.style.cssText='max-width:220px;max-height:160px;border-radius:8px;border:1px solid #dbe3ec;object-fit:cover;display:block';link.append(preview)}
+      else {link.className='btn';link.textContent='Fungua faili'}
+      attachment.append(link);
+      if(image){const open=document.createElement('a');open.href=url;open.target='_blank';open.rel='noopener';open.className='muted';open.style.fontSize='13px';open.textContent='Fungua picha';attachment.append(open)}
+      details.append(attachment);
+    }
+  }else{const noAttachment=document.createElement('p');noAttachment.className='muted';noAttachment.style.cssText='margin:6px 0';noAttachment.textContent='Hakuna picha/faili';details.append(noAttachment)}
+  card.append(controls,details);
+  return card;
+});
+if(rows.length)list.replaceChildren(...rows);else adminEmpty(list,'Hakuna maombi bado.');
 }
 window.del=async(t,id)=>{if(await window.MilkyWayDialog.confirm({message:'Delete?',danger:true})){await sb.from(t).delete().eq('id',id);refresh()}}
 window.statusReq=async(id,status)=>{
@@ -225,8 +254,35 @@ window.statusReq=async(id,status)=>{
   const r=await sb.from('job_requests').select('user_id,request_code').eq('id',id).single();
   if(r.data?.user_id){await sb.from('project_updates').insert({request_id:id,status,title:'Status updated',description:'Ombi lako limehamishwa kwenda '+status,progress:status==='completed'?100:(status==='in_progress'?60:20)});await sb.from('customer_notifications').insert({user_id:r.data.user_id,type:'request',title:'Service request updated',body:'Request '+(r.data.request_code||'')+' status: '+status,link:'index.html'});}
 };
-async function customerMessages(){const {data,error}=await sb.from('customer_messages').select('*').order('created_at',{ascending:false}).limit(200);if(error){$('customerMessageList').innerHTML='<p class="muted">'+error.message+'</p>';return}const rows=data||[];const groups={};rows.forEach(x=>{groups[x.thread_id]??=[];groups[x.thread_id].push(x)});$('customerMessageList').innerHTML=Object.entries(groups).map(([tid,items])=>{const last=items[0],rid=last.request_id||'';const history=items.slice().reverse().map(x=>`<div style="padding:8px;margin:5px 0;border-radius:8px;background:${x.is_from_admin?'#e8f5e9':'#f8fafc'}"><strong>${x.is_from_admin?'Admin':'Customer'}</strong><br>${(x.message||'').replace(/</g,'&lt;')}<br><small>${new Date(x.created_at).toLocaleString()}</small></div>`).join('');return `<div class="item" style="display:block"><strong>Customer: ${last.customer_id}</strong><br><span class="muted">Thread: ${tid} · Request: ${rid||'-'}</span><div>${history}</div><textarea id="crmreply-${tid}" placeholder="Jibu mteja..." style="width:100%;box-sizing:border-box;min-height:60px;padding:9px;border:1px solid #cbd5e1;border-radius:8px"></textarea><button class="btn" onclick="replyCustomer('${tid}','${last.customer_id}','${rid}')">Tuma Jibu</button></div>`}).join('')||'<p class="muted">Hakuna ujumbe wa customer portal.</p>'}
-window.replyCustomer=async(tid,uid,rid)=>{const ta=document.getElementById('crmreply-'+tid);const msg=(ta?.value||'').trim();if(!msg)return;const {error}=await sb.from('customer_messages').insert({thread_id:tid,customer_id:uid,request_id:rid||null,message:msg,is_from_admin:true,is_read:true});if(error){alert(error.message);return}await sb.from('customer_notifications').insert({user_id:uid,type:'message',title:'New message from Masiyatunda',body:msg,link:'index.html'});ta.value='';customerMessages()};
+async function customerMessages(){
+  const {data,error}=await sb.from('customer_messages').select('*').order('created_at',{ascending:false}).limit(200);
+  const container=$('customerMessageList');
+  if(error){adminEmpty(container,error.message);return}
+  const groups=new Map();
+  for(const item of data||[]){const key=item.thread_id||'';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
+  const cards=[...groups.entries()].map(([threadId,items],index)=>{
+    const last=items[0],requestId=last.request_id||'',boxId=`crm-reply-${index}`;
+    const card=document.createElement('div');card.className='item';card.style.display='block';
+    const customer=document.createElement('strong');customer.textContent=`Customer: ${last.customer_id||''}`;
+    const details=document.createElement('span');details.className='muted';details.textContent=`Thread: ${threadId} · Request: ${requestId||'-'}`;
+    card.append(customer,document.createElement('br'),details);
+    for(const item of items.slice().reverse()){
+      const message=document.createElement('div');message.style.cssText=`padding:8px;margin:5px 0;border-radius:8px;background:${item.is_from_admin?'#e8f5e9':'#f8fafc'}`;
+      const sender=document.createElement('strong');sender.textContent=item.is_from_admin?'Admin':'Customer';
+      const body=document.createElement('p');body.style.margin='4px 0';body.textContent=item.message||'';
+      const timestamp=document.createElement('small');timestamp.textContent=item.created_at?new Date(item.created_at).toLocaleString():'';
+      message.append(sender,document.createElement('br'),body,document.createElement('br'),timestamp);
+      card.append(message);
+    }
+    const reply=document.createElement('textarea');reply.id=boxId;reply.placeholder='Jibu mteja...';reply.style.cssText='width:100%;box-sizing:border-box;min-height:60px;padding:9px;border:1px solid #cbd5e1;border-radius:8px';
+    const send=document.createElement('button');send.type='button';send.className='btn';send.textContent='Tuma Jibu';
+    send.addEventListener('click',()=>window.replyCustomer(threadId,last.customer_id,requestId,boxId));
+    card.append(reply,send);
+    return card;
+  });
+  if(cards.length)container.replaceChildren(...cards);else adminEmpty(container,'Hakuna ujumbe wa customer portal.');
+}
+window.replyCustomer=async(tid,uid,rid,boxId)=>{const ta=document.getElementById(boxId);const msg=(ta?.value||'').trim();if(!msg)return;const {error}=await sb.from('customer_messages').insert({thread_id:tid,customer_id:uid,request_id:rid||null,message:msg,is_from_admin:true,is_read:true});if(error){alert(error.message);return}await sb.from('customer_notifications').insert({user_id:uid,type:'message',title:'New message from Masiyatunda',body:msg,link:'index.html'});ta.value='';customerMessages()};
 $('createQuote')?.addEventListener('click',async()=>{const uid=$('crmUser').value.trim();if(!uid||!$('quoteNo').value.trim()){alert('Customer User ID na Quote Number vinahitajika');return}const total=Number($('quoteTotal').value||0);const {data,error}=await sb.from('customer_quotes').insert({customer_id:uid,request_id:$('crmRequest').value.trim()||null,quote_number:$('quoteNo').value.trim(),status:$('quoteStatus').value,currency:$('quoteCurrency').value||'TZS',subtotal:total,tax:0,total,valid_until:$('quoteValid').value||null,notes:$('quoteNotes').value||null}).select().single();if(error){$('quoteMsg').textContent=error.message;return}await sb.from('customer_notifications').insert({user_id:uid,type:'quote',title:'New quotation available',body:'Quotation '+data.quote_number+' is ready. Masiyatunda Admin will contact you.',link:'index.html'});$('quoteMsg').textContent='Quotation created successfully.'});
 $('createUpdate')?.addEventListener('click',async()=>{const rid=$('updateRequest').value.trim();if(!rid)return;const r=await sb.from('job_requests').select('user_id').eq('id',rid).single();if(r.error||!r.data?.user_id){$('updateMsg').textContent='Request haijapatikana au haina customer account.';return}const {error}=await sb.from('project_updates').insert({request_id:rid,status:$('updateStatus').value||'in_progress',title:$('updateTitle').value||'Project update',description:$('updateDesc').value||'',progress:Number($('updateProgress').value||0)});if(error){$('updateMsg').textContent=error.message;return}await sb.from('customer_notifications').insert({user_id:r.data.user_id,type:'project',title:'Project update',body:$('updateTitle').value||'New project update',link:'index.html'});$('updateMsg').textContent='Update published.'});
 $('refreshCustomerMessages')?.addEventListener('click',customerMessages);
@@ -252,25 +308,44 @@ async function messages(){
   Object.values(threads).forEach(t=>t.items.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)));
   const artistIds=[...new Set(Object.values(threads).map(t=>t.artist_id).filter(Boolean))]; let artistMap={}; if(artistIds.length){const ar=await sb.from('artist_profiles').select('id,name').in('id',artistIds);(ar.data||[]).forEach(a=>artistMap[a.id]=a.name)}
 
-  $('messageList').innerHTML=Object.values(threads).map(t=>{
+  const cards=Object.values(threads).map((t,index)=>{
     const last=t.items[t.items.length-1];
     const hasUnread=t.items.some(x=>!x.is_read && !x.is_from_admin);
-    const boxId='th-'+t.id.replace(/[^a-zA-Z0-9]/g,'');
-    const history=t.items.map(x=>`<div style="margin:6px 0;padding:8px;border-radius:8px;background:${x.is_from_admin?'#e8f5e9':'#f8fafc'}"><strong>${x.is_from_admin?'Admin':'Mgeni'}</strong> <span class="muted">${x.created_at?new Date(x.created_at).toLocaleString():''}</span><p style="margin:4px 0">${(x.message||'').replace(/</g,'&lt;')}</p></div>`).join('');
-    return `<div class="item" style="display:block;${hasUnread?'border-left:4px solid #d4af37':''}">
-      <strong>${t.name||'Mgeni'}</strong> · <span class="tag" style="background:${(t.items[0]&&t.items[0].context==='sanaa')?'#12c7f5':'#d4af37'};color:#07162f;padding:2px 7px;border-radius:999px;font-size:11px">${(t.items[0]&&t.items[0].context==='sanaa')?'SANAA':'GENERAL'}</span> · <span class="muted">${t.phone||''}</span>
-      ${t.artist_id?`<br><span class="tag" style="background:#e8f7ff;color:#07162f;padding:2px 7px;border-radius:999px;font-size:11px">Msanii: ${escapeHtml(artistMap[t.artist_id]||'Artist')}</span>`:''}<br><span class="muted">Ujumbe ${t.items.length} · Mwisho: ${last&&last.created_at?new Date(last.created_at).toLocaleString():''}</span>
-      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" type="button" onclick="document.getElementById('${boxId}').style.display=document.getElementById('${boxId}').style.display==='none'?'block':'none'">Soma / Jibu</button>
-        <button class="btn danger" type="button" onclick="delThread('${t.id}')">Futa thread</button>
-      </div>
-      <div id="${boxId}" style="display:none;margin-top:10px">
-        ${history}
-        <textarea id="reply-${boxId}" placeholder="Andika jibu..." style="width:100%;min-height:70px;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box"></textarea>
-        <button class="btn" type="button" onclick="replyThread('${t.id}','${boxId}','${(t.name||'').replace(/'/g,"\'") }','${(t.phone||'').replace(/'/g,"\'") }','${t.context||'general'}','${t.artist_id||''}')">Tuma jibu</button>
-      </div>
-    </div>`;
-  }).join('')||'<p class="muted">Hakuna ujumbe bado.</p>';
+    const boxId=`admin-thread-${index}`;
+    const card=document.createElement('div');card.className='item';card.style.display='block';
+    if(hasUnread)card.style.borderLeft='4px solid #d4af37';
+    const name=document.createElement('strong');name.textContent=t.name||'Mgeni';
+    const context=document.createElement('span');context.className='tag';context.textContent=t.context==='sanaa'?'SANAA':'GENERAL';
+    context.style.cssText=`background:${t.context==='sanaa'?'#12c7f5':'#d4af37'};color:#07162f;padding:2px 7px;border-radius:999px;font-size:11px`;
+    const phone=document.createElement('span');phone.className='muted';phone.textContent=t.phone||'';
+    card.append(name,document.createTextNode(' · '),context,document.createTextNode(' · '),phone);
+    if(t.artist_id){const artist=document.createElement('span');artist.className='tag';artist.style.cssText='background:#e8f7ff;color:#07162f;padding:2px 7px;border-radius:999px;font-size:11px';artist.textContent=`Msanii: ${artistMap[t.artist_id]||'Artist'}`;card.append(document.createElement('br'),artist)}
+    const meta=document.createElement('span');meta.className='muted';meta.textContent=`Ujumbe ${t.items.length} · Mwisho: ${last&&last.created_at?new Date(last.created_at).toLocaleString():''}`;
+    card.append(document.createElement('br'),meta);
+    const actions=document.createElement('div');actions.style.cssText='margin-top:8px;display:flex;gap:8px;flex-wrap:wrap';
+    const details=document.createElement('div');details.id=boxId;details.style.cssText='display:none;margin-top:10px';
+    const read=document.createElement('button');read.type='button';read.className='btn';read.textContent='Soma / Jibu';
+    read.addEventListener('click',()=>{details.style.display=details.style.display==='none'?'block':'none'});
+    const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Futa thread';
+    remove.addEventListener('click',()=>window.delThread(t.id));
+    actions.append(read,remove);
+    for(const item of t.items){
+      const history=document.createElement('div');history.style.cssText=`margin:6px 0;padding:8px;border-radius:8px;background:${item.is_from_admin?'#e8f5e9':'#f8fafc'}`;
+      const sender=document.createElement('strong');sender.textContent=item.is_from_admin?'Admin':'Mgeni';
+      const time=document.createElement('span');time.className='muted';time.textContent=item.created_at?new Date(item.created_at).toLocaleString():'';
+      const message=document.createElement('p');message.style.margin='4px 0';message.textContent=item.message||'';
+      history.append(sender,document.createTextNode(' '),time,message);
+      details.append(history);
+    }
+    const reply=document.createElement('textarea');reply.id=`reply-${boxId}`;reply.placeholder='Andika jibu...';reply.style.cssText='width:100%;min-height:70px;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:8px;box-sizing:border-box';
+    const send=document.createElement('button');send.type='button';send.className='btn';send.textContent='Tuma jibu';
+    send.addEventListener('click',()=>window.replyThread(t.id,boxId,t.name||'',t.phone||'',t.context||'general',t.artist_id||''));
+    details.append(reply,send);
+    card.append(actions,details);
+    return card;
+  });
+  const messageList=$('messageList');
+  if(cards.length)messageList.replaceChildren(...cards);else adminEmpty(messageList,'Hakuna ujumbe bado.');
 }
 window.replyThread=async(threadId,boxId,name,phone,context,artistId)=>{
   const ta=document.getElementById('reply-'+boxId);
@@ -308,11 +383,11 @@ setInterval(()=>{if(document.visibilityState==='visible')messages()},10000);
 
 
 let editingArtistId=null;
-async function loadArtArtistOptions(){const el=$('artArtist');if(!el)return;const r=await sb.from('artist_profiles').select('id,name,active').eq('active',true).order('name');if(r.error)return;el.innerHTML='<option value=\"\">-- Hakuna / General Sanaa --</option>'+(r.data||[]).map(x=>`<option value=\"${x.id}\">${escapeHtml(x.name)}</option>`).join('')}
+async function loadArtArtistOptions(){const select=$('artArtist');if(!select)return;const r=await sb.from('artist_profiles').select('id,name,active').eq('active',true).order('name');if(r.error){select.replaceChildren(new Option(r.error.message,''));return}const options=[new Option('-- Hakuna / General Sanaa --',''),...(r.data||[]).map(artist=>new Option(artist.name||'',artist.id))];select.replaceChildren(...options)}
 async function artists(){
  const {data,error}=await sb.from('artist_profiles').select('*').order('created_at',{ascending:false}).limit(300);
  const rows=data||[];
- if(error){ if($('artistList')) $('artistList').innerHTML='<p class="muted">'+error.message+'</p>'; return; }
+ if(error){ if($('artistList')) adminEmpty($('artistList'),error.message); return; }
  const verified=rows.filter(x=>x.verified).length;
  const pending=rows.length-verified; $('artistCount').textContent=rows.length; $('verifiedArtistCount').textContent=verified; $('pendingArtistCount').textContent=pending; $('artistDashCount').textContent=rows.length; setBadge('artistPendingBadge',pending); if($('artistPendingQuick'))$('artistPendingQuick').textContent=pending;
  renderArtists(rows);
@@ -320,7 +395,22 @@ async function artists(){
 function renderArtists(rows){
  const q=(($('artistSearch')?.value)||'').trim().toLowerCase();
  const filtered=rows.filter(x=>[x.name,x.category,x.email,x.phone,x.location].some(v=>String(v||'').toLowerCase().includes(q)));
- $('artistList').innerHTML=filtered.map(x=>`<div class="artist-card"><img loading="lazy" decoding="async" src="${window.MilkyWayMedia.image(x.photo_url||'placeholder.svg',320)}" alt=""><div><strong>${escapeHtml(x.name||'-')}</strong> ${x.verified?'<span class="verified">✓ Verified</span>':''}<div class="muted">${escapeHtml(x.category||'-')} · ${escapeHtml(x.location||'-')}</div></div><div style="clear:both"></div><p>${escapeHtml(x.bio||'')}</p><small class="muted">${escapeHtml(x.email||'')} ${x.phone?'· '+escapeHtml(x.phone):''}</small><div style="margin-top:10px;display:flex;gap:8px"><button class="btn" type="button" onclick="toggleArtist('${x.id}',${!x.verified})">${x.verified?'Unverify':'Verify'}</button><button class="btn danger" type="button" onclick="deleteArtist('${x.id}')">Delete</button></div></div>`).join('')||'<p class="muted">Hakuna artist anayepatikana.</p>';
+ const cards=filtered.map(artist=>{
+   const card=document.createElement('div');card.className='artist-card';
+   const image=adminMediaNode(artist.photo_url||'placeholder.svg',false,320);
+   const info=document.createElement('div');
+   const name=document.createElement('strong');name.textContent=artist.name||'-';info.append(name);
+   if(artist.verified){const verified=document.createElement('span');verified.className='verified';verified.textContent='✓ Verified';info.append(' ',verified)}
+   const meta=document.createElement('div');meta.className='muted';meta.textContent=`${artist.category||'-'} · ${artist.location||'-'}`;info.append(meta);
+   const clear=document.createElement('div');clear.style.clear='both';
+   const bio=document.createElement('p');bio.textContent=artist.bio||'';
+   const contact=document.createElement('small');contact.className='muted';contact.textContent=`${artist.email||''} ${artist.phone?'· '+artist.phone:''}`;
+   const actions=document.createElement('div');actions.style.cssText='margin-top:10px;display:flex;gap:8px';
+   const toggle=document.createElement('button');toggle.type='button';toggle.className='btn';toggle.textContent=artist.verified?'Unverify':'Verify';toggle.addEventListener('click',()=>window.toggleArtist(artist.id,!artist.verified));
+   const remove=document.createElement('button');remove.type='button';remove.className='btn danger';remove.textContent='Delete';remove.addEventListener('click',()=>window.deleteArtist(artist.id));
+   actions.append(toggle,remove);card.append(image,info,clear,bio,contact,actions);return card;
+ });
+ const list=$('artistList');if(cards.length)list.replaceChildren(...cards);else adminEmpty(list,'Hakuna artist anayepatikana.');
 }
 function escapeHtml(v){return String(v||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 async function uploadArtistPhoto(file){if(!file)return null;const path='artists/'+crypto.randomUUID()+'-'+file.name.replace(/[^a-zA-Z0-9._-]/g,'-');return upload('portfolio',file,path)}
@@ -331,7 +421,7 @@ $('artistSearch')?.addEventListener('input',()=>artists());
 window.toggleArtist=async(id,val)=>{const r=await sb.from('artist_profiles').update({verified:val}).eq('id',id);if(r.error)alert(r.error.message);else{await addAudit(val?'artist_verified':'artist_unverified',id);artists()}};
 window.deleteArtist=async id=>{if(!(await window.MilkyWayDialog.confirm({message:'Futa artist huyu?',danger:true})))return;const r=await sb.from('artist_profiles').delete().eq('id',id);if(r.error)alert(r.error.message);else{await addAudit('artist_deleted',id);artists()}};
 async function addAudit(action,details){try{await sb.from('admin_audit_logs').insert({admin_email:$('userEmail')?.textContent||null,action,details:String(details||'')})}catch(e){}}
-async function auditLog(){const {data,error}=await sb.from('admin_audit_logs').select('*').order('created_at',{ascending:false}).limit(50);if(error){if($('auditList'))$('auditList').innerHTML='<p class="muted">'+error.message+'</p>';return}$('auditList').innerHTML=(data||[]).map(x=>`<div class="audit-row"><strong>${escapeHtml(x.action)}</strong><div class="muted">${escapeHtml(x.details||'')} · ${escapeHtml(x.admin_email||'-')} · ${new Date(x.created_at).toLocaleString()}</div></div>`).join('')||'<p class="muted">Hakuna audit events bado.</p>'}
+async function auditLog(){const {data,error}=await sb.from('admin_audit_logs').select('*').order('created_at',{ascending:false}).limit(50);const list=$('auditList');if(error){adminEmpty(list,error.message);return}const rows=(data||[]).map(item=>{const row=document.createElement('div');row.className='audit-row';const action=document.createElement('strong');action.textContent=item.action||'';const details=document.createElement('div');details.className='muted';details.textContent=`${item.details||''} · ${item.admin_email||'-'} · ${new Date(item.created_at).toLocaleString()}`;row.append(action,details);return row});if(rows.length)list.replaceChildren(...rows);else adminEmpty(list,'Hakuna audit events bado.')}
 $('resetPassword')?.addEventListener('click',async()=>{const email=$('userEmail').textContent.trim();if(!email)return;const r=await sb.auth.resetPasswordForEmail(email,{redirectTo:'https://masiyatunda.com/milkyway/'});$('passwordMsg').textContent=r.error?r.error.message:'Password reset link imetumwa kwenye email.';await addAudit('password_reset_requested',email)});
 $('saveLanguage')?.addEventListener('click',()=>{const value=$('adminLanguage').value;localStorage.setItem('mw_lang',value);localStorage.setItem('masiyatunda_lang',value);localStorage.setItem('masiyatunda_admin_lang',value);window.MilkyWayI18n.apply();$('languageMsg').textContent=window.MilkyWayI18n.t('saved')});
 $('globalSearch')?.addEventListener('keydown',e=>{if(e.key!=='Enter')return;const q=e.target.value.trim().toLowerCase();if(!q)return;const panels=['projects','news','leaders','arts','artists','media','requests','crm','messages','mwUsers','mwAds','settings'];const target=panels.find(id=>{const el=$(id);return el&&el.innerText.toLowerCase().includes(q)});if(target)openPanel(target);else alert('Hakuna sehemu inayolingana na utafutaji huu.');});

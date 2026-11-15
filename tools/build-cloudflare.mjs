@@ -19,7 +19,7 @@ const filter = source => {
   return true;
 };
 
-for (const file of ['index.html', 'sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder.svg', 'careers.html', 'media.html', 'sanaa.html', 'admin.html']) {
+for (const file of ['index.html', 'sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder.svg', 'careers.html', 'media.html', 'sanaa.html', 'admin.html', 'privacy.html', 'account-deletion.html']) {
   if (existsSync(join(root, file))) cpSync(join(root, file), join(out, file));
 }
 for (const folder of ['img', 'slides', 'milkyway']) {

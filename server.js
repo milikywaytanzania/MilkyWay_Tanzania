@@ -46,7 +46,7 @@ app.use((request, response, next) => blocked.test(request.path) ? response.sendS
 
 const noCache = (response, path) => { if (/(^|[\\/])sw(-cache)?\.js$|\.webmanifest$|\.html$/.test(path)) response.setHeader('Cache-Control', 'no-cache'); };
 const options = { index: false, dotfiles: 'ignore', setHeaders: noCache, maxAge: '1h' };
-for (const file of ['sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder.svg', 'careers.html', 'media.html', 'sanaa.html', 'admin.html']) {
+for (const file of ['sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder.svg', 'careers.html', 'media.html', 'sanaa.html', 'admin.html', 'privacy.html', 'account-deletion.html']) {
   app.get(`/${file}`, (_request, response) => response.sendFile(join(root, file), { headers: /\.(js|webmanifest|html)$/.test(file) ? { 'Cache-Control': 'no-cache' } : {} }));
 }
 for (const folder of ['img', 'slides']) app.use(`/${folder}`, express.static(join(root, folder), options));

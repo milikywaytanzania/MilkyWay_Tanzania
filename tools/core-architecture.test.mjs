@@ -79,6 +79,46 @@ test('homepage APK download is a native static-file link', () => {
   assert.match(build, /copyFileSync\(join\(downloads, 'MilkyWay\.apk'\), join\(publicDownloads, 'MilkyWay\.apk'\)\)/);
 });
 
+test('public Supabase content uses DOM text nodes and validates media URLs', () => {
+  const homepage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const publicMedia = readFileSync(new URL('../milkyway/public-media.js', import.meta.url), 'utf8');
+  const publicArts = readFileSync(new URL('../milkyway/public-arts.js', import.meta.url), 'utf8');
+  const artsChat = readFileSync(new URL('../milkyway/public-arts-chat.js', import.meta.url), 'utf8');
+  const moderation = readFileSync(new URL('../milkyway/moderation.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(homepage, /innerHTML\s*=/);
+  for (const source of [publicMedia, publicArts, artsChat]) {
+    assert.doesNotMatch(source, /innerHTML\s*=|insertAdjacentHTML/);
+    assert.match(source, /textContent/);
+  }
+  for (const source of [homepage, publicMedia, publicArts]) {
+    assert.match(source, /https:/);
+    assert.match(source, /safe\w*MediaUrl|safeMediaUrl/);
+  }
+  assert.doesNotMatch(moderation, /innerHTML\s*=/);
+  assert.match(moderation, /textContent/);
+});
+
+test('registration, privacy policy and account deletion request are wired', () => {
+  const auth = readFileSync(new URL('../milkyway/app/ui/auth-sheet.js', import.meta.url), 'utf8');
+  assert.match(auth, /auth\.signUp/);
+  assert.match(auth, /emailRedirectTo/);
+  assert.match(auth, /passwordMismatch/);
+  assert.match(auth, /confirmEmailSent/);
+  const policy = readFileSync(new URL('../privacy.html', import.meta.url), 'utf8');
+  const deletion = readFileSync(new URL('../account-deletion.html', import.meta.url), 'utf8');
+  assert.match(policy, /account-deletion\.html/);
+  assert.match(deletion, /mailto:masiyatunda@gmail\.com/);
+  const appSettings = readFileSync(new URL('../milkyway/app/ui/settings-view.js', import.meta.url), 'utf8');
+  assert.match(appSettings, /\/privacy\.html/);
+  assert.match(appSettings, /\/account-deletion\.html/);
+  const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const build = readFileSync(new URL('./build-cloudflare.mjs', import.meta.url), 'utf8');
+  for (const page of ['privacy.html', 'account-deletion.html']) {
+    assert.ok(server.includes(page), `${page} is served by server.js`);
+    assert.ok(build.includes(page), `${page} is included in the static build`);
+  }
+});
+
 test('LIVE token keeps viewers subscribed until the server records host approval', async () => {
   const hostId = '11111111-1111-4111-8111-111111111111';
   const viewerId = '22222222-2222-4222-8222-222222222222';

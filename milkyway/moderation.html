@@ -54,7 +54,9 @@ button{border:0;border-radius:10px;padding:10px 12px;font-weight:800;cursor:poin
 <script>
 const sb=supabase.createClient('https://wpclkhgizbvxuvbhbwzs.supabase.co','sb_publishable_GCFJ3Is8t8mdia4gLeHApg_M_3ez9xb');
 const $=id=>document.getElementById(id);
-function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&','<':'<','>':'>','"':'"'}[c]))}
+function setMessage(container,message,className=''){
+  const node=document.createElement('p');node.className=className;node.textContent=message;container.replaceChildren(node);
+}
 async function withTimeout(p,ms){
   return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('Muda umeisha. Ingia hapa.')),ms))]);
 }
@@ -98,12 +100,21 @@ $('find').onclick=async()=>{
   const q=$('q').value.trim();
   if(!q)return;
   const {data,error}=await sb.from('mw_profiles').select('id,display_name,username,is_banned,suspended_until').or(`display_name.ilike.%${q}%,username.ilike.%${q}%`).limit(20);
-  if(error){$('accounts').innerHTML='<p class="err">'+esc(error.message)+'</p>';return}
-  $('accounts').innerHTML=(data||[]).map(x=>`<div class="card"><b>${esc(x.display_name)}</b> @${esc(x.username||'')}<div class="row" style="margin-top:8px"><button class="danger" data-ban="${x.id}" data-v="${!x.is_banned}">${x.is_banned?'Ondoa ban':'Ban'}</button></div></div>`).join('')||'<p>Hakuna.</p>';
-  $('accounts').querySelectorAll('[data-ban]').forEach(b=>b.onclick=async()=>{
-    const {error}=await sb.from('mw_profiles').update({is_banned:b.dataset.v==='true'}).eq('id',b.dataset.ban);
-    if(error) alert(error.message); else $('find').click();
+  if(error){setMessage($('accounts'),error.message,'err');return}
+  const cards=(data||[]).map(account=>{
+    const card=document.createElement('div');card.className='card';
+    const name=document.createElement('b');name.textContent=account.display_name||'';
+    const username=document.createTextNode(` @${account.username||''}`);
+    const actions=document.createElement('div');actions.className='row';actions.style.marginTop='8px';
+    const button=document.createElement('button');button.type='button';button.className='danger';button.textContent=account.is_banned?'Ondoa ban':'Ban';
+    button.addEventListener('click',async()=>{
+      const {error:updateError}=await sb.from('mw_profiles').update({is_banned:!account.is_banned}).eq('id',account.id);
+      if(updateError)alert(updateError.message);else $('find').click();
+    });
+    actions.append(button);card.append(name,username,actions);return card;
   });
+  const accounts=$('accounts');
+  if(cards.length)accounts.replaceChildren(...cards);else setMessage(accounts,'Hakuna.');
 };
 boot();
 </script>
