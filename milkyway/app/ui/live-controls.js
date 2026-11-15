@@ -9,6 +9,7 @@ import { Sheet } from './sheet.js';
 import { h, icon, toast, avatar } from './dom.js';
 
 const SLOW_STEPS = [0, 3, 10, 30, 60];
+const MAX_SEATS = 8;
 
 /** Runs a session action with a toast on failure; returns true on success. */
 async function run(session, action, extra = {}, okMessage = '') {
@@ -79,11 +80,14 @@ export class HostControls {
     this.guestSheet = this.#sheet(t('guests'), 'lc-sheet');
     this.settingsSheet = this.#sheet(t('liveSettings'), 'lc-sheet');
     this.viewerSheet = this.#sheet(t('viewersTitle'), 'lc-sheet');
+    this.moderationSheet = this.#sheet(t('moderation'), 'lc-sheet');
+    this.modQuery = '';
     this.personSheet = this.#sheet('', 'lc-sheet lc-person-sheet');
     this.query = '';
+    this.knownRequests = null;
     this.offs = [
-      session.on('room', () => this.#rerender()),
-      session.on('audience', () => { if (this.viewerSheet.isOpen || this.guestSheet.isOpen) this.#rerender(); }),
+      session.on('room', status => { this.#announceRequests(status); this.#rerender(); }),
+      session.on('audience', () => { if (this.viewerSheet.isOpen || this.guestSheet.isOpen || this.moderationSheet.isOpen) this.#rerender(); }),
       session.on('declined', userId => {
         const person = this.#people().find(entry => entry.userId === userId);
         toast(`${person?.name || 'MilkyWay'} ${t('declined')}`);
@@ -94,6 +98,8 @@ export class HostControls {
   destroy() { this.offs.forEach(off => off()); this.sheets.forEach(sheet => sheet.root.remove()); }
 
   openGuests() { this.#renderGuests(); this.guestSheet.open(); }
+  /** Moderation: comment rules plus everyone watching, with quick mute / remove and the muted and removed lists. */
+  openModeration() { this.#renderModeration(); this.moderationSheet.open(); }
   openSettings() { this.#renderSettings(); this.settingsSheet.open(); }
   openViewers() { this.#renderViewers(); this.viewerSheet.open(); }
   /** Actions for one person; `message` is set when opened from a comment. */
@@ -107,12 +113,24 @@ export class HostControls {
   /** Pending guest requests, for the badge on the guests button. */
   get pendingCount() { return this.#people().filter(person => person.state === 'pending' && !person.invited).length; }
 
+  // A short notice when someone new asks to join, so the host never misses a request.
+  #announceRequests(status) {
+    const pending = (status?.members || []).filter(member => member.state === 'pending' && !member.invited);
+    const ids = new Set(pending.map(member => member.userId));
+    if (this.knownRequests && !this.guestSheet.isOpen) {
+      const fresh = pending.filter(member => !this.knownRequests.has(member.userId));
+      if (fresh.length) toast(fresh.length === 1 ? `${fresh[0].name || 'MilkyWay'} ${t('wantsToJoin')}` : `${fresh.length} ${t('newRequests')}`);
+    }
+    this.knownRequests = ids;
+  }
+
   #sheet(title, className) { const sheet = new Sheet({ title, className }); this.sheets.push(sheet); return sheet; }
 
   #rerender() {
     if (this.guestSheet.isOpen) this.#renderGuests();
     if (this.settingsSheet.isOpen) this.#renderSettings({ keepInputs: true });
     if (this.viewerSheet.isOpen) this.#renderViewers();
+    if (this.moderationSheet.isOpen) this.#renderModeration();
     if (this.personSheet.isOpen) this.#renderPerson();
   }
 
@@ -141,16 +159,34 @@ export class HostControls {
     const stage = people.filter(person => person.state === 'speaker');
     const requests = people.filter(person => person.state === 'pending' && !person.invited && !person.blocked);
     const invited = people.filter(person => person.invited && person.state !== 'speaker');
-    const seats = Math.max(1, (settings.layout || 3) - 1);
+    const seats = Math.max(1, Math.min(MAX_SEATS, (settings.layout || 4) - 1));
     const seatLabel = h('b', {}, `${stage.length}/${seats}`);
-    const setSeats = next => run(s, 'settings', { layout: Math.max(2, Math.min(9, next + 1)) });
+    const setSeats = next => {
+      const value = Math.max(1, Math.min(MAX_SEATS, next));
+      if (value < stage.length) { toast(t('removeGuestFirst')); return; }
+      run(s, 'settings', { layout: value + 1 });
+    };
+    const inviteSection = section(t('inviteViewers'), ...this.#inviteList(people));
+    // Seats 1–8: guests on stage, open seats (tap to invite) and closed seats (tap to open up to that seat).
+    const seatGrid = h('div', { class: 'lc-seats', role: 'list' }, ...Array.from({ length: MAX_SEATS }, (_, i) => {
+      const n = i + 1;
+      const person = stage[i];
+      if (person) return h('button', { class: 'lc-seat taken', type: 'button', role: 'listitem', onclick: () => this.openPerson(person) },
+        h('span', { class: 'lc-seat-n' }, String(n)), avatar(person, 36), h('small', {}, person.name || 'MilkyWay'),
+        person.hostMuted ? h('span', { class: 'lc-seat-mic', html: icon.muted }) : null);
+      if (n > seats) return h('button', { class: 'lc-seat locked', type: 'button', role: 'listitem', 'aria-label': `${t('openSeat')} ${n}`, onclick: () => setSeats(n) },
+        h('span', { class: 'lc-seat-n' }, String(n)), h('span', { class: 'lc-seat-icon' }, '🔒'), h('small', {}, t('closedSeat')));
+      return h('button', { class: 'lc-seat empty', type: 'button', role: 'listitem', onclick: () => inviteSection.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+        h('span', { class: 'lc-seat-n' }, String(n)), h('span', { class: 'lc-seat-icon' }, '+'), h('small', {}, t('emptySeat')));
+    }));
 
     this.guestSheet.body.replaceChildren(
       section(t('seats'),
         h('div', { class: 'lc-stepper' },
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '−', disabled: seats <= 1 || seats <= stage.length, onclick: () => setSeats(seats - 1) }, '−'),
           seatLabel,
-          h('button', { class: 'icon-btn', type: 'button', 'aria-label': '+', disabled: seats >= 8, onclick: () => setSeats(seats + 1) }, '+'))),
+          h('button', { class: 'icon-btn', type: 'button', 'aria-label': '+', disabled: seats >= MAX_SEATS, onclick: () => setSeats(seats + 1) }, '+')),
+        seatGrid),
       section(t('admission'),
         segmented('lcAdmission', [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]], settings.admission || 'approval',
           value => run(s, 'settings', { admission: value })),
@@ -169,7 +205,7 @@ export class HostControls {
           : [note(t('noRequests'))])),
       invited.length ? section(`${t('invited')} (${invited.length})`,
         ...invited.map(person => personRow(person, actionBtn(t('cancelInvite'), () => run(s, 'cancel-invite', { target: person.userId }))))) : null,
-      section(t('inviteViewers'), ...this.#inviteList(people)),
+      inviteSection,
     );
   }
 
@@ -225,6 +261,55 @@ export class HostControls {
         toggleRow(t('showViewerCount'), settings.showViewerCount !== false, value => run(s, 'settings', { showViewerCount: value })),
         toggleRow(t('allowGifts'), settings.giftsEnabled !== false, value => run(s, 'settings', { giftsEnabled: value })),
         toggleRow(t('allowLikes'), settings.likesEnabled !== false, value => run(s, 'settings', { likesEnabled: value }))),
+      section(`${t('mutedCommenters')} (${muted.length})`,
+        ...(muted.length ? muted.map(person => personRow(person, actionBtn(t('unmute'), () => run(s, 'unmute-comments', { target: person.userId })))) : [note(t('noneYet'))])),
+      section(`${t('removedPeople')} (${blocked.length})`,
+        ...(blocked.length ? blocked.map(person => personRow(person, actionBtn(t('unblock'), () => run(s, 'unblock', { target: person.userId })))) : [note(t('noneYet'))])),
+    );
+  }
+
+  // ---- Moderation -------------------------------------------------------------------------------------------
+  #renderModeration() {
+    const s = this.session, settings = s.settings;
+    // Don't wipe the search box while the host is typing in it.
+    const typing = this.moderationSheet.body.contains(document.activeElement) && document.activeElement.matches('input[type="search"]');
+    const people = this.#people();
+    const byId = id => people.find(person => person.userId === id) || { userId: id, name: 'MilkyWay' };
+    const muted = (settings.mutedIds || []).map(byId);
+    const blocked = (settings.blockedIds || []).map(byId);
+
+    const list = h('div', { class: 'lc-list' });
+    const paint = () => {
+      const q = this.modQuery.trim().toLowerCase();
+      const watching = this.#people().filter(person => person.online && !person.blocked && (!q || (person.name || '').toLowerCase().includes(q)))
+        .sort((a, b) => (b.state === 'speaker') - (a.state === 'speaker') || (a.name || '').localeCompare(b.name || ''));
+      list.replaceChildren(...(watching.length ? watching.slice(0, 200).map(person => {
+        const row = personRow(person,
+          person.commentMuted
+            ? actionBtn(t('unmute'), event => { event.stopPropagation(); run(s, 'unmute-comments', { target: person.userId }); })
+            : actionBtn(t('muteComments'), event => { event.stopPropagation(); run(s, 'mute-comments', { target: person.userId }); }),
+          confirmButton(t('removeFromLive'), () => run(s, 'kick', { target: person.userId }, t('removed'))));
+        row.classList.add('tappable');
+        row.addEventListener('click', event => { if (!event.target.closest('button')) this.openPerson(person); });
+        return row;
+      }) : [note(t('noViewers'))]));
+    };
+    if (typing) { paint(); this.moderationSheet.body.querySelector('.lc-list')?.replaceWith(list); return; }
+    const search = h('input', { class: 'field', type: 'search', placeholder: t('searchViewers'), value: this.modQuery });
+    search.addEventListener('input', () => { this.modQuery = search.value; paint(); });
+    paint();
+
+    this.moderationSheet.body.replaceChildren(
+      section(t('comments2'),
+        segmented('lcModComments', [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]], settings.comments || 'everyone',
+          value => run(s, 'settings', { comments: value })),
+        h('div', { class: 'lc-label' }, t('slowMode')),
+        segmented('lcModSlow', SLOW_STEPS.map(step => [step, step ? `${step}${t('seconds')}` : t('slowOff')]), settings.slowMode || 0,
+          value => run(s, 'settings', { slowMode: Number(value) })),
+        toggleRow(t('filterLinks'), settings.filterLinks, value => run(s, 'settings', { filterLinks: value })),
+        settings.pinned ? h('div', { class: 'lc-inline' }, h('span', { class: 'lc-note' }, `📌 ${settings.pinned.name || 'MilkyWay'}: ${settings.pinned.body || ''}`),
+          actionBtn(t('unpinComment'), () => run(s, 'unpin'))) : null),
+      section(t('viewersTitle'), search, list),
       section(`${t('mutedCommenters')} (${muted.length})`,
         ...(muted.length ? muted.map(person => personRow(person, actionBtn(t('unmute'), () => run(s, 'unmute-comments', { target: person.userId })))) : [note(t('noneYet'))])),
       section(`${t('removedPeople')} (${blocked.length})`,

@@ -79,7 +79,7 @@ export class LiveSession extends Emitter {
   /** Connects media + event channels. Resolves when watching (or throws with a readable message). */
   async join() {
     this.emit('state', 'connecting');
-    this.#openRealtime(); // in parallel; never blocks the video
+    if (!this.channel) this.#openRealtime(); // in parallel; never blocks the video
     this.#loadHistory();
     const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host)]);
     if (this.closed) return;
@@ -101,7 +101,10 @@ export class LiveSession extends Emitter {
       .on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.kind === 'video' || publication.track?.kind === 'video') { publication.track?.detach().forEach(element => element.remove()); this.emit('video-gone', room.localParticipant.identity); } })
       .on(RoomEvent.TrackMuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: true }))
       .on(RoomEvent.TrackUnmuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: false }))
-      .on(RoomEvent.ParticipantPermissionsChanged, (_prev, participant) => { if (participant === room.localParticipant || participant?.isLocal) this.#syncStage(); })
+      .on(RoomEvent.ParticipantPermissionsChanged, (_prev, participant) => {
+        // The host just seated, muted or removed this guest: read the room now instead of waiting for the next poll.
+        if (participant === room.localParticipant || participant?.isLocal || !participant) { this.#syncStage(); this.#refreshSoon(); }
+      })
       .on(RoomEvent.ParticipantConnected, participant => {
         this.#countViewers(); this.emit('audience');
         if (participant.identity === this.live.host.id) clearTimeout(this.hostTimer);
@@ -137,6 +140,18 @@ export class LiveSession extends Emitter {
     if (this.host) await this.#publish();
     this.#schedulePoll();
     this.flushLikes = setInterval(() => this.#sendLikes(), 500);
+  }
+
+  /** Joins again after the media connection dropped for good (same session, panels and chat stay as they are). */
+  async reconnect() {
+    const old = this.room;
+    this.room = null;
+    clearTimeout(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer);
+    try { old?.removeAllListeners?.(); await old?.disconnect(); } catch {}
+    if (this.closed) return;
+    this.onStage = false;
+    tokenCache.delete(this.live.room);
+    return this.join();
   }
 
   async leave() {
@@ -251,6 +266,8 @@ export class LiveSession extends Emitter {
     await lp.setMicrophoneEnabled(true);
     if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: 'user' });
     this.facing = 'user';
+    if (this.published) { this.refresh(); return; } // reconnecting: the host's current settings stay as they are
+    this.published = true;
     // Starting settings chosen in the Go LIVE sheet (guests, comments); everything else keeps its defaults.
     const initial = { layout: 4, admission: 'approval', order: [], ...(this.live.initialSettings || {}) };
     api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'settings', ...initial } })
@@ -266,7 +283,16 @@ export class LiveSession extends Emitter {
     const lp = this.room.localParticipant;
     const seated = self?.state === 'speaker';
     try {
-      if (seated && lp.permissions?.canPublish !== false) {
+      if (seated && lp.permissions?.canPublish === false) {
+        // Seated on the server but LiveKit has no publish rights for this connection (e.g. approved while
+        // reconnecting): ask the server to grant them again, at most every 8 s.
+        if (Date.now() - (this.regrantAt || 0) > 8000) {
+          this.regrantAt = Date.now();
+          api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'request' } }).catch(() => {});
+        }
+        return;
+      }
+      if (seated) {
         if (!this.onStage) {
           this.onStage = true;
           if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: this.facing || 'user' });
@@ -298,6 +324,11 @@ export class LiveSession extends Emitter {
 
   // Tells everyone in the room that the room state changed, so they refresh now instead of at the next poll.
   #nudge(to = '') { this.#broadcast({ t: 'room', id: crypto.randomUUID(), uid: auth.userId, to }, true); }
+
+  #refreshSoon() {
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = setTimeout(() => this.#loadHistory(), 120);
+  }
 
   #onNudge() {
     clearTimeout(this.nudgeTimer);
@@ -410,8 +441,10 @@ export class LiveSession extends Emitter {
   }
 
   async #loadHistory() {
-    if (!auth.signedIn() || this.loadingHistory || this.closed) return;
+    if (!auth.signedIn() || this.closed) return;
+    if (this.loadingHistory) { this.loadAgain = true; return; } // one more read right after the current one
     this.loadingHistory = true;
+    this.loadAgain = false;
     try {
       const status = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'status' }, timeout: 10000 });
       if (this.closed || !status) return;
@@ -430,7 +463,10 @@ export class LiveSession extends Emitter {
     } catch (error) {
       if (error.status === 404) this.#ended();
       else if (error.status === 403 && !this.host) this.#removed();
-    } finally { this.loadingHistory = false; }
+    } finally {
+      this.loadingHistory = false;
+      if (this.loadAgain && !this.closed) { this.loadAgain = false; setTimeout(() => this.#loadHistory(), 0); }
+    }
   }
 
   #ended() {

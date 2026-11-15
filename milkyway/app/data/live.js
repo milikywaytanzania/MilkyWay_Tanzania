@@ -1,12 +1,23 @@
 // Live sessions directory: cached list, kept fresh by Supabase Realtime (postgres changes) with a slow poll fallback.
-import { rest, auth, supabase } from '../core/net.js';
+import { config } from '../config.js';
+import { api, rest, auth, supabase } from '../core/net.js';
 import { resource } from '../core/sync.js';
 import { profiles } from './profiles.js';
 
 const SELECT = 'id,room_name,host_id,host_name,title,scope,is_live,started_at';
 
+// The site API only lists Lives whose LiveKit room is really running (no dead rooms left behind by a closed app);
+// the database is read directly when the API is unreachable.
+async function liveRows() {
+  try {
+    const result = await api(`${config.api.liveRoom}?action=lives`, { timeout: 9000 });
+    if (Array.isArray(result?.sessions)) return result.sessions;
+  } catch { /* fall back to the database */ }
+  return (await rest(`mw_video_live_sessions?is_live=eq.true&select=${SELECT}&order=started_at.desc&limit=60`)) || [];
+}
+
 async function fetchLives() {
-  const rows = (await rest(`mw_video_live_sessions?is_live=eq.true&select=${SELECT}&order=started_at.desc&limit=60`)) || [];
+  const rows = await liveRows();
   const following = await profiles.loadFollowing();
   const seenRooms = new Set(), seenHosts = new Set();
   const visible = rows.filter(row => {
@@ -48,6 +59,11 @@ export async function watchLives() {
 }
 
 export async function createSession({ room, title }) {
+  // One LIVE per host: sessions left open by an earlier broadcast (app closed, connection lost) end first,
+  // so viewers never land in an old room.
+  await rest(`mw_video_live_sessions?host_id=eq.${auth.userId}&is_live=eq.true`, {
+    method: 'PATCH', body: { is_live: false, ended_at: new Date().toISOString() },
+  }).catch(() => {});
   const rows = await rest('mw_video_live_sessions', {
     method: 'POST', prefer: 'return=representation',
     body: { room_name: room, host_id: auth.userId, host_name: auth.name, title, scope: 'public', is_live: true, started_at: new Date().toISOString(), ended_at: null },

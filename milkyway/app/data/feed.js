@@ -1,7 +1,7 @@
 // Feed repository: cached pages per scope ("foryou" / "following"), background refresh, infinite paging,
 // and optimistic like / save / follow that survive going offline.
 import { config } from '../config.js';
-import { api, rest, auth } from '../core/net.js';
+import { api, rest, auth, supabase } from '../core/net.js';
 import { resource, perform, registerOp } from '../core/sync.js';
 import { profiles } from './profiles.js';
 
@@ -58,6 +58,18 @@ export function feed(scope = 'foryou') {
   return api;
 }
 
+/** Posts deleted on this device; views drop them even from pages they still hold in memory. */
+export const deletedPosts = new Set();
+const dropPost = postId => feeds.forEach(({ source }) => {
+  const value = source.value;
+  if (value?.posts?.some(post => post.id === postId)) source.mutate({ ...value, posts: value.posts.filter(post => post.id !== postId) });
+});
+const STORAGE_PREFIX = '/storage/v1/object/public/portfolio/';
+const storagePath = url => {
+  const at = String(url || '').indexOf(STORAGE_PREFIX);
+  return at === -1 ? '' : decodeURIComponent(String(url).slice(at + STORAGE_PREFIX.length).split('?')[0]);
+};
+
 const updatePost = (postId, change) => feeds.forEach(({ source }) => {
   const value = source.value;
   if (!value?.posts?.some(post => post.id === postId)) return;
@@ -90,6 +102,21 @@ export const actions = {
   follow(authorId, on) {
     profiles.setFollowing(authorId, on);
     return perform('follow', { target: authorId, user: auth.userId, on }).catch(error => { profiles.setFollowing(authorId, !on); throw error; });
+  },
+  /** Deletes one of the signed-in user's posts (row-level security allows authors only), then its files. */
+  async remove(post) {
+    if (!auth.signedIn() || !post?.id) throw new Error('Sign in first.');
+    // Attached documents first: their rows are looked up through the post.
+    await api(`/api/milkyway-gallery?action=post&id=${encodeURIComponent(post.id)}`, { method: 'DELETE', timeout: 15000 }).catch(() => {});
+    const sb = await supabase();
+    const { data, error } = await sb.from('mw_posts').delete().eq('id', post.id).eq('author_id', auth.userId).select('id');
+    if (error) throw error;
+    if (!data?.length) throw Object.assign(new Error('This post could not be deleted.'), { status: 403 });
+    deletedPosts.add(post.id);
+    dropPost(post.id);
+    const path = storagePath(post.media_url || post.media?.url);
+    if (path.startsWith(`milkyway/${auth.userId}/`)) sb.storage.from('portfolio').remove([path, `${path}.poster.jpg`]).catch(() => {});
+    return true;
   },
   commentAdded(postId) { updatePost(postId, current => ({ comments: current.comments + 1 })); },
 };

@@ -27,8 +27,21 @@ const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSh
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
 const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray()));
 const inboxView = lazy(() => import('./ui/inbox-view.js').then(m => new m.InboxView()));
-const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({ requireLogin, openCreate })));
+const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({ requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)) })));
 const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet()));
+// Full-size post popup for photos tapped in the Orbit feed (the same viewer the Nova grid uses).
+const postViewer = lazy(() => import('./ui/post-viewer.js').then(m => new m.PostViewer({
+  requireLogin,
+  openComments: post => commentsSheet().then(sheet => sheet.open(post)),
+})));
+function openPost(post) {
+  if (!post) return;
+  playback.suspend(true);
+  postViewer().then(viewer => {
+    // A copy: the popup keeps its own counts; likes still go through the shared feed actions.
+    viewer.open([{ ...post, _counted: true }], 0, { own: false, onClose: () => { if (shell.dataset.view === 'home') playback.suspend(false); } });
+  }).catch(() => { playback.suspend(false); toast(t('imageUnavailable')); });
+}
 const liveView = lazy(() => import('./ui/live-view.js').then(m => new m.LiveView($('liveView'), {
   requireLogin, openProfile, onClose: () => showHome(),
   openGifts: target => giftTray().then(tray => tray.open(target)),
@@ -54,6 +67,7 @@ const feedView = new FeedView($('feedView'), {
   openProfile,
   openComments: post => commentsSheet().then(sheet => sheet.open(post)),
   openGifts: target => giftTray().then(tray => tray.open(target)),
+  openPost,
 });
 
 let scope = auth.signedIn() && localStorage.getItem('mw_core_scope') === 'following' ? 'following' : 'foryou';

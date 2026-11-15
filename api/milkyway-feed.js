@@ -14,6 +14,15 @@ const clamp = (value, min, max, fallback) => {
 };
 const validTime = value => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
 const quiet = promise => promise.catch(() => null);
+// Posts store media_type as 'video' / 'image', a MIME type ('video/mp4', 'image/jpeg') or nothing at all (older posts),
+// so the file extension decides when the type is missing or unknown.
+const VIDEO_FILE = /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i;
+const mediaKind = (url, type) => {
+  const value = String(type || '').toLowerCase();
+  if (value.startsWith('video')) return 'video';
+  if (value.startsWith('image') || value === 'photo' || value === 'picture') return VIDEO_FILE.test(url) ? 'video' : 'image';
+  return VIDEO_FILE.test(String(url)) ? 'video' : 'image';
+};
 
 async function follows(ctx, filter) {
   for (const table of FOLLOW_TABLES) {
@@ -31,7 +40,7 @@ async function page({ ctx, query }) {
   const filters = [`select=id,author_id,author_name,caption,media_url,media_type,created_at`, `order=created_at.desc`, `limit=${limit * 2}`];
   if (validTime(query.before)) filters.push(`created_at=lt.${encodeURIComponent(new Date(query.before).toISOString())}`);
   // Default: every post (text posts render as cards). media=video → videos only, media=visual → photos + videos.
-  if (query.media === 'video') filters.push('media_type=eq.video');
+  if (query.media === 'video') filters.push('media_type=ilike.video*');
   else if (query.media === 'visual') filters.push('media_url=not.is.null');
 
   let followed = null;
@@ -90,7 +99,7 @@ async function page({ ctx, query }) {
         avatar: profile?.avatar_url || '',
       },
       caption: row.caption || '',
-      media: row.media_url ? { url: row.media_url, type: row.media_type === 'video' ? 'video' : 'image' } : null,
+      media: row.media_url ? { url: row.media_url, type: mediaKind(row.media_url, row.media_type) } : null,
       createdAt: row.created_at,
       likes: likes.get(row.id) || 0,
       comments: comments.get(row.id) || 0,

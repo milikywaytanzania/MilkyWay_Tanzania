@@ -18,6 +18,9 @@ export class Sheet {
   get isOpen() { return !this.root.hidden; }
   open() {
     this.returnFocus = document.activeElement;
+    // The newest popup always sits on top of the others (e.g. comments opened from a post or a LIVE panel).
+    if (document.body.lastElementChild !== this.root) document.body.append(this.root);
+    clearTimeout(this.hideTimer);
     this.root.hidden = false;
     requestAnimationFrame(() => this.root.classList.add('open'));
     setTimeout(() => this.panel.querySelector('input, textarea, button')?.focus({ preventScroll: true }), 220);
@@ -25,7 +28,7 @@ export class Sheet {
   close() {
     if (this.root.hidden) return;
     this.root.classList.remove('open');
-    setTimeout(() => { this.root.hidden = true; }, 220);
+    this.hideTimer = setTimeout(() => { this.root.hidden = true; }, 220);
     this.returnFocus?.focus?.({ preventScroll: true });
     this.onClose?.();
   }

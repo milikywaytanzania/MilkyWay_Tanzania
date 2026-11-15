@@ -208,7 +208,7 @@ export class VerticalPager {
 
     document.addEventListener('keydown', event => {
       if (blocked(event.target) || event.defaultPrevented || !(root.checkVisibility?.() ?? root.offsetParent !== null)) return;
-      if (event.target.closest?.('.sheet-layer')) return;
+      if (event.target.closest?.('.sheet-layer, .pv-layer')) return;
       const step = { ArrowDown: 1, PageDown: 1, j: 1, ArrowUp: -1, PageUp: -1, k: -1 }[event.key];
       if (!step) return;
       event.preventDefault();

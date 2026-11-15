@@ -5,7 +5,7 @@
 
 # Feed pictures and video posters are resized + converted to WebP/AVIF by Netlify Image CDN (see milkyway/app/core/media.js).
 [images]
-  remote_images = ["https://wpclkhgizbvxuvbhbwzs\\.supabase\\.co/storage/v1/.*"]
+  remote_images = ["https://wpclkhgizbvxuvbhbwzs\\.supabase\\.co/storage/v1/.*", "https://wpclkhgizbvxuvbhbwzs.supabase.co/storage/.*"]
 
 # The app shell modules are revalidated on each visit (the service worker serves them instantly meanwhile).
 [[headers]]

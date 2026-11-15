@@ -2,21 +2,76 @@
 // Header, counts and posts come from Supabase as the caller, so row-level security decides what is visible.
 import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
-import { image } from '../core/media.js';
+import { setImage, poster } from '../core/media.js';
 import { profiles } from '../data/profiles.js';
 import { actions } from '../data/feed.js';
 import { Sheet } from './sheet.js';
-import { h, avatar, count, toast } from './dom.js';
+import { h, icon, avatar, count, toast } from './dom.js';
+import { PostViewer, postKind } from './post-viewer.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
 
 export class ProfileView {
-  constructor({ requireLogin, openCreate }) {
-    this.hooks = { requireLogin, openCreate };
+  constructor({ requireLogin, openCreate, openComments }) {
+    this.hooks = { requireLogin, openCreate, openComments };
     this.sheet = new Sheet({ title: t('me'), className: 'profile-sheet' });
     this.content = h('div', { class: 'profile' });
     this.sheet.body.append(this.content);
     this.token = 0;
+    this.posts = [];
+    this.viewer = null;
+    // Delete confirmation for a post picked from the grid's "⋯" button.
+    this.menu = new Sheet({ title: t('post'), className: 'post-menu-sheet' });
+  }
+
+  #viewer() {
+    return this.viewer ||= new PostViewer({
+      requireLogin: () => this.hooks.requireLogin(),
+      openComments: post => this.hooks.openComments?.(post),
+      onDeleted: post => this.#removed(post),
+    });
+  }
+
+  #openPost(post) {
+    const index = this.posts.indexOf(post);
+    if (index >= 0) this.#viewer().open(this.posts, index, { own: this.own });
+  }
+
+  #removed(post) {
+    const at = this.posts.indexOf(post);
+    if (at >= 0) this.posts.splice(at, 1);
+    this.grid?.querySelector(`[data-post="${CSS.escape(String(post.id))}"]`)?.remove();
+    if (this.postCount) this.postCount.textContent = count(this.posts.length);
+    if (this.grid && !this.posts.length) this.grid.replaceChildren(h('p', { class: 'muted center' }, this.own ? t('noPostsYet') : t('empty')));
+  }
+
+  #postMenu(post) {
+    const message = h('p', { class: 'muted center', role: 'status' });
+    const remove = h('button', { class: 'pill-btn danger wide', type: 'button' }, t('deletePost'));
+    let armed = 0;
+    remove.onclick = async () => {
+      if (!armed) {
+        remove.textContent = t('tapAgainDelete'); remove.classList.add('armed');
+        armed = setTimeout(() => { armed = 0; remove.textContent = t('deletePost'); remove.classList.remove('armed'); }, 3000);
+        return;
+      }
+      clearTimeout(armed);
+      remove.disabled = true; remove.textContent = t('deleting'); message.textContent = '';
+      try {
+        await actions.remove(post);
+        this.#removed(post);
+        this.menu.close();
+        toast(t('postDeleted'));
+      } catch (error) {
+        armed = 0; remove.disabled = false; remove.textContent = t('deletePost'); remove.classList.remove('armed');
+        message.textContent = error?.message || t('deleteFailed');
+      }
+    };
+    this.menu.body.replaceChildren(h('div', { class: 'stack' },
+      h('button', { class: 'pill-btn wide', type: 'button', onclick: () => { this.menu.close(); this.#openPost(post); } }, t('openPost')),
+      remove, message,
+      h('button', { class: 'link center', type: 'button', onclick: () => this.menu.close() }, t('cancel'))));
+    this.menu.open();
   }
 
   /** person: { id, name, username, avatar } or null for the signed-in user. */
@@ -40,7 +95,7 @@ export class ProfileView {
         quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle()),
         quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
         quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        quiet(sb.from('mw_posts').select('id,caption,media_url,media_type,created_at').eq('author_id', id).order('created_at', { ascending: false }).limit(30)),
+        quiet(sb.from('mw_posts').select('id,author_id,caption,media_url,media_type,created_at').eq('author_id', id).order('created_at', { ascending: false }).limit(30)),
       ]);
       if (token !== this.token) return;
       const row = profile.data || {};
@@ -54,8 +109,10 @@ export class ProfileView {
   }
 
   #render({ profile, followers = 0, following = 0, posts = [], loading = false, error = false }) {
+    this.posts = posts.slice();
+    this.postCount = h('b', {}, count(posts.length));
     const stats = h('div', { class: 'profile-stats' },
-      h('span', {}, h('b', {}, count(posts.length)), t('posts')),
+      h('span', {}, this.postCount, t('posts')),
       h('span', {}, h('b', {}, count(followers)), t('followers')),
       h('span', {}, h('b', {}, count(following)), t('followingCount')));
     const actionsRow = h('div', { class: 'profile-actions' });
@@ -78,11 +135,14 @@ export class ProfileView {
       actionsRow.append(h('button', { class: 'pill-btn hot', type: 'button', onclick: () => this.hooks.requireLogin() }, t('follow')));
     }
 
-    const grid = h('div', { class: 'profile-grid' });
+    const grid = this.grid = h('div', { class: 'profile-grid' });
     if (loading) grid.append(h('p', { class: 'muted center' }, t('loading')));
     else if (error) grid.append(h('p', { class: 'muted center' }, t('retry')));
     else if (!posts.length) grid.append(h('p', { class: 'muted center' }, this.own ? t('noPostsYet') : t('empty')));
-    else grid.append(...posts.map(post => tile(post)));
+    else grid.append(...this.posts.map(post => tile(post, {
+      open: () => this.#openPost(post),
+      menu: this.own ? () => this.#postMenu(post) : null,
+    })));
 
     this.content.replaceChildren(
       h('div', { class: 'profile-head' },
@@ -124,18 +184,28 @@ export class ProfileView {
   }
 }
 
-function tile(post) {
-  const node = h('div', { class: 'profile-tile' });
-  if (post.media_url && post.media_type === 'video') {
-    const video = h('video', { src: post.media_url, muted: true, playsinline: true, loop: true, preload: 'metadata' });
+function tile(post, { open, menu }) {
+  const kind = postKind(post);
+  const url = post.media_url || '';
+  const node = h('div', { class: `profile-tile ${kind}`, role: 'button', tabindex: '0', 'data-post': String(post.id), 'aria-label': post.caption || t('post') });
+  if (kind === 'video') {
+    // A still frame: the saved poster when there is one, otherwise the first frame of the video itself.
+    const still = poster(url, 360);
+    const video = h('video', { muted: true, playsinline: true, preload: 'metadata', disablepictureinpicture: true, src: `${url}#t=0.1` });
     video.muted = true;
-    node.append(video);
-    node.addEventListener('click', () => (video.paused ? video.play().catch(() => {}) : video.pause()));
-  } else if (post.media_url) {
-    node.append(h('img', { src: image(post.media_url, 360), alt: post.caption || '', loading: 'lazy', decoding: 'async' }));
+    if (still) video.poster = still;
+    node.append(video, h('span', { class: 'tile-badge', html: icon.play, 'aria-hidden': 'true' }));
+  } else if (kind === 'image') {
+    const img = h('img', { alt: post.caption || '', loading: 'lazy', decoding: 'async', draggable: 'false' });
+    setImage(img, url, 360, { onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
+    node.append(img);
   } else {
-    node.classList.add('text');
     node.append(h('p', {}, (post.caption || '').slice(0, 140)));
   }
+  if (menu) {
+    node.append(h('button', { class: 'tile-more', type: 'button', 'aria-label': t('postOptions'), onclick: event => { event.stopPropagation(); menu(); } }, '⋯'));
+  }
+  node.addEventListener('click', open);
+  node.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
   return node;
 }

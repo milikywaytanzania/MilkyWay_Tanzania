@@ -1,48 +1,30 @@
-import { createHmac } from 'node:crypto';
 import { route, ApiError, requireUuid, isUuid } from './_lib/supa.js';
 import { LIVE_DEFAULTS as DEFAULTS, loadLiveSettings as loadSettings } from './_lib/live-policy.js';
+import { livekit, livekitConfigured, CAMERA, MIC } from './_lib/livekit.js';
 
 // Co-host Live rooms (TikTok-style guests). The client polls `status`; request/approve/mute/remove change who may
 // publish. Publish rights are changed in LiveKit itself with the server secret, so a guest cannot grant themselves
-// camera/mic access by editing database rows. Needs LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET on Render.
+// camera/mic access by editing database rows. Needs LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET.
+//
+//   GET  /api/milkyway-live-room?action=lives  → { sessions: [...] } Lives whose room is really running on LiveKit
+//   POST /api/milkyway-live-room { room, action: 'status' | 'request' | 'approve' | ... }
 
 const ROOM = /^mw-(audio|video)-live-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const ADMISSIONS = ['approval', 'direct', 'broadcast'];
 const COMMENT_MODES = ['everyone', 'followers', 'off'];
 const SLOW_MODES = [0, 3, 10, 30, 60];
 const INVITE_TTL_MS = 3 * 60_000;
-const CAMERA = 1, MIC = 2;
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]{2,}\.(com|net|org|io|co|tz|ke|ug|me|ly|app|link|xyz|info|biz|site|online|shop)\b)/i;
 
-const env = name => (process.env[name] || '').trim();
-const b64 = value => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url');
-
-function livekitConfigured() { return !!(env('LIVEKIT_URL') && env('LIVEKIT_API_KEY') && env('LIVEKIT_API_SECRET')); }
-
-async function livekit(method, room, body) {
-  if (!livekitConfigured()) throw new ApiError(503, 'LiveKit is not configured on the server (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET).');
-  const now = Math.floor(Date.now() / 1000);
-  const head = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ iss: env('LIVEKIT_API_KEY'), sub: 'milkyway-render', nbf: now - 5, exp: now + 60, video: { roomAdmin: true, room } })}`;
-  const jwt = `${head}.${createHmac('sha256', env('LIVEKIT_API_SECRET')).update(head).digest('base64url')}`;
-  const origin = env('LIVEKIT_URL').replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\/+$/, '');
-  let result;
-  try {
-    result = await fetch(`${origin}/twirp/livekit.RoomService/${method}`, {
-      method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room, ...body }), signal: AbortSignal.timeout(8000),
-    });
-  } catch { throw new ApiError(503, 'LiveKit is unreachable.'); }
-  const data = await result.json().catch(() => ({}));
-  if (result.status === 404) return null; // participant or room is not connected right now
-  if (!result.ok) throw new ApiError(503, data?.msg || 'LiveKit rejected the request.');
-  return data;
-}
-
 const sourcesFor = (audioRoom, micAllowed) => audioRoom ? (micAllowed ? [MIC] : []) : (micAllowed ? [CAMERA, MIC] : [CAMERA]);
-const setPublish = (room, identity, allowed, audioRoom, micAllowed = true) => livekit('UpdateParticipant', room, {
-  identity,
-  permission: { canSubscribe: true, canPublish: allowed, canPublishData: true, canPublishSources: allowed ? sourcesFor(audioRoom, micAllowed) : [] },
-});
+// An empty source list means "every source" to LiveKit, so a guest left with no allowed source cannot publish at all.
+const setPublish = (room, identity, allowed, audioRoom, micAllowed = true) => {
+  const sources = allowed ? sourcesFor(audioRoom, micAllowed) : [];
+  return livekit('UpdateParticipant', room, {
+    identity,
+    permission: { canSubscribe: true, canPublish: sources.length > 0, canPublishData: true, canPublishSources: sources },
+  });
+};
 
 // Short cache so every viewer polling does not hit LiveKit each time.
 const presence = new Map();
@@ -358,4 +340,26 @@ async function handle({ ctx, body, method }) {
   throw new ApiError(400, 'Unsupported room action.');
 }
 
-export default route({ '': handle });
+// Lives directory: sessions marked live whose LiveKit room is really running (a host whose app closed without
+// ending leaves a row behind; those are hidden instead of showing a room nobody can connect to).
+const LIVE_SELECT = 'id,room_name,host_id,host_name,title,scope,is_live,started_at';
+const STARTING_MS = 90_000;
+async function lives({ ctx }) {
+  const rows = (await ctx.rest(`mw_video_live_sessions?is_live=eq.true&select=${LIVE_SELECT}&order=started_at.desc&limit=60`)) || [];
+  const named = rows.filter(row => ROOM.test(row.room_name || ''));
+  if (!named.length || !livekitConfigured()) return { sessions: named, verified: false };
+  let rooms;
+  try {
+    const data = await livekit('ListRooms', null, { names: named.map(row => row.room_name) }, { roomList: true });
+    rooms = new Map((data?.rooms || []).map(room => [room.name, room]));
+  } catch { return { sessions: named, verified: false }; }
+  const running = named.filter(row => {
+    const room = rooms.get(row.room_name);
+    if (room && Number(room.num_publishers ?? room.numPublishers ?? 0) > 0) return true;
+    // Just started: the host may still be connecting their camera.
+    return Date.now() - Date.parse(row.started_at || 0) < STARTING_MS;
+  });
+  return { sessions: running, verified: true };
+}
+
+export default route({ '': handle, lives: { auth: false, run: lives } });

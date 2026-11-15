@@ -121,27 +121,39 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 
 /* ---- Feed slide --------------------------------------------------------------------------------------------- */
 .media { position: absolute; inset: 0; display: grid; place-items: center; background: var(--void); }
-.media video, .media img { width: 100%; height: 100%; object-fit: contain; background: var(--void); }
+/* Media is pinned to the slide box: a large photo can never grow the grid row and render cropped or off-screen. */
+.media video, .media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--void); }
+.media img { cursor: zoom-in; user-select: none; -webkit-user-drag: none; }
+.media-missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.media .text-card { position: absolute; inset: 0; }
 .slide[data-fit="cover"] .media video, .slide[data-fit="cover"] .media img { object-fit: cover; }
 .text-card { padding: 32px 28px; font-size: clamp(20px, 5.4vw, 30px); font-weight: 700; line-height: 1.25; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere;
   width: 100%; height: 100%; display: grid; place-items: center; background: url("../galaxy-starfield.svg") 0 0 / 480px 560px, radial-gradient(90% 60% at 25% 15%, rgba(155,92,255,.55) 0%, transparent 60%), radial-gradient(80% 60% at 85% 85%, rgba(61,139,255,.4) 0%, transparent 60%), linear-gradient(160deg, #120a3d 0%, var(--midnight) 50%, var(--void) 100%); }
 .paused-badge { position: absolute; font-size: 72px; opacity: .8; pointer-events: none; filter: drop-shadow(0 2px 8px rgba(0,0,0,.4)); }
 .shade { position: absolute; inset: auto 0 0; height: 42%; background: linear-gradient(transparent, rgba(0,0,0,.6)); pointer-events: none; }
-.rail { position: absolute; right: 8px; bottom: 18px; display: grid; justify-items: center; gap: 16px; z-index: 2; }
-.rail-author { position: relative; margin-bottom: 8px; cursor: pointer; }
+/* Right-hand action rail: compact so it sits clear of the caption and never crowds small phones. */
+.rail { position: absolute; right: 6px; bottom: 14px; display: grid; justify-items: center; gap: 10px; z-index: 2; }
+.rail-author { position: relative; margin-bottom: 6px; cursor: pointer; }
+.rail-author .avatar { --s: 40px; }
 .avatar { --s: 40px; width: var(--s); height: var(--s); border-radius: 50%; overflow: hidden; display: inline-grid; place-items: center; flex: none;
   background: linear-gradient(135deg, var(--galaxy), #1d1546); font-weight: 700; font-size: calc(var(--s) * .42); color: #fff; border: 1.5px solid #fff; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.follow-plus { position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--accent); font-size: 14px; }
-.rail-btn { display: grid; justify-items: center; gap: 3px; font-size: 12px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-.rail-icon { font-size: 34px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.45)); transition: transform .18s var(--ease); }
+.follow-plus { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); font-size: 12px; }
+.rail-btn { display: grid; justify-items: center; gap: 2px; min-width: 40px; padding: 0; font-size: 11px; line-height: 1.1; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.rail-icon { width: 34px; height: 34px; display: grid; place-items: center; font-size: 27px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.45)); transition: transform .18s var(--ease); }
+@media (max-height: 700px), (max-width: 360px) {
+  .rail { gap: 7px; bottom: 10px; }
+  .rail-author .avatar { --s: 36px; }
+  .rail-icon { width: 30px; height: 30px; font-size: 24px; }
+  .rail-btn { font-size: 10.5px; }
+}
 .rail-btn:active .rail-icon { transform: scale(.86); }
 .rail-btn.rail-like.on .rail-icon { color: var(--accent); animation: pop .32s var(--ease); }
 .rail-btn.rail-save.on .rail-icon { color: var(--starlight); }
 .rail-btn b:empty { display: none; }
 @keyframes pop { 40% { transform: scale(1.28); } }
-.meta { position: absolute; left: 12px; right: 78px; bottom: 16px; z-index: 2; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.meta { position: absolute; left: 12px; right: 62px; bottom: 16px; z-index: 2; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
 .meta-name { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .meta-caption { margin: 0; font-size: 14.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; cursor: pointer; }
 .meta-caption.open { -webkit-line-clamp: 12; }
@@ -366,9 +378,57 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .profile-grid > p { grid-column: 1 / -1; }
 .profile-tile { aspect-ratio: 3 / 4; overflow: hidden; border-radius: 6px; background: var(--panel-2); }
-.profile-tile img, .profile-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-tile img, .profile-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .profile-tile.text { display: grid; place-items: center; padding: 8px; background: linear-gradient(160deg, #120a3d, var(--midnight)); }
 .profile-tile.text p { margin: 0; font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
 .field.area { height: auto; min-height: 88px; padding: 10px 14px; resize: vertical; }
 .compose-preview { display: grid; gap: 6px; justify-items: center; }
 .compose-preview img, .compose-preview video { width: 100%; max-height: 280px; object-fit: contain; border-radius: 12px; background: var(--void); }
+
+/* ---- Profile grid tiles + post detail popup ------------------------------------------------------------------ */
+.profile-tile { position: relative; cursor: pointer; outline: none; }
+.profile-tile:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.profile-tile:active { opacity: .85; }
+.profile-tile video { pointer-events: none; background: var(--void); }
+.profile-tile .tile-badge { position: absolute; left: 6px; bottom: 6px; width: 22px; height: 22px; display: grid; place-items: center; font-size: 18px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.7)); pointer-events: none; }
+.profile-tile.missing { display: grid; place-items: center; }
+.tile-missing { font-size: 26px; opacity: .45; }
+.tile-more { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; line-height: 1; font-weight: 800;
+  background: rgba(0,0,0,.5); color: #fff; }
+.pv-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: rgba(3,4,13,.97); outline: none; opacity: 0; transition: opacity .18s; }
+.pv-layer.open { opacity: 1; }
+.pv-frame { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.pv-media { position: absolute; inset: 0; display: grid; place-items: center; touch-action: pan-y; }
+/* Photos and videos fill the popup and scale to fit (never cropped, never larger than the screen). */
+.pv-media img, .pv-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
+.pv-media img { cursor: zoom-in; }
+.pv-media.loading::before { content: ""; width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18); border-top-color: var(--accent); animation: pvSpin .8s linear infinite; }
+@keyframes pvSpin { to { transform: rotate(360deg); } }
+.pv-media.zoomed { display: block; overflow: auto; touch-action: pan-x pan-y; overscroll-behavior: contain; }
+.pv-media.zoomed img { position: static; width: auto; height: auto; max-width: none; max-height: none; margin: auto; cursor: zoom-out; }
+.pv-text { padding: 32px 28px; max-width: 560px; font-size: clamp(20px, 5.4vw, 28px); font-weight: 700; line-height: 1.3; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pv-missing { padding: 24px; text-align: center; }
+.pv-close { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 10px); right: 10px; background: rgba(0,0,0,.45); }
+.pv-nav { position: absolute; z-index: 3; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,.4); font-size: 30px; line-height: 1; }
+.pv-prev { left: 8px; }
+.pv-next { right: 8px; }
+.pv-layer .mw-mark { left: 12px; top: calc(env(safe-area-inset-top) + 12px); }
+.pv-info { flex: none; display: grid; gap: 6px; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); max-height: 38dvh; overflow-y: auto; border-top: 1px solid var(--line); background: var(--panel); }
+.pv-caption { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.pv-actions { display: flex; align-items: center; gap: 14px; }
+.pv-act { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.pv-act span { width: 24px; height: 24px; display: grid; place-items: center; font-size: 22px; }
+.pv-act.on span { color: var(--accent); }
+.pv-delete { margin-left: auto; padding: 8px 14px; font-size: 13px; }
+
+/* ---- LIVE guest seats 1–8 ------------------------------------------------------------------------------------- */
+.lc-seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.lc-seat { position: relative; display: grid; justify-items: center; align-content: center; gap: 4px; min-height: 84px; padding: 8px 4px; border-radius: 12px;
+  background: var(--panel-2); border: 1px dashed rgba(255,255,255,.18); font-size: 12px; }
+.lc-seat small { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.7); }
+.lc-seat.taken { border-style: solid; border-color: rgba(176,92,255,.55); background: rgba(176,92,255,.16); }
+.lc-seat.locked { opacity: .55; }
+.lc-seat-n { position: absolute; top: 4px; left: 6px; font-size: 10.5px; font-weight: 800; color: rgba(255,255,255,.55); }
+.lc-seat-icon { font-size: 20px; line-height: 1; }
+.lc-seat-mic { position: absolute; top: 4px; right: 6px; font-size: 13px; color: #ff6b8b; }
+.live-state .live-retry { margin-left: 6px; padding: 5px 12px; font-size: 13px; }

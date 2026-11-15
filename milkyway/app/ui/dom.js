@@ -1,6 +1,6 @@
 // DOM helpers, icons and formatting shared by the views. No framework: direct, minimal DOM writes.
 import { lang } from '../core/i18n.js';
-import { image } from '../core/media.js';
+import { setImage } from '../core/media.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 
@@ -85,7 +85,7 @@ export function paintAvatar(node, profile, size = 48) {
   const letter = (profile?.name || 'M').trim().slice(0, 1).toUpperCase() || 'M';
   node.replaceChildren();
   if (!profile?.avatar) { node.textContent = letter; return; }
-  const img = h('img', { alt: '', decoding: 'async', width: size, height: size, src: image(profile.avatar, size * 2) });
-  img.onerror = () => { node.textContent = letter; };
+  const img = h('img', { alt: '', decoding: 'async', width: size, height: size });
+  setImage(img, profile.avatar, size * 2, { onFail: () => { node.textContent = letter; } });
   node.append(img);
 }

@@ -49,6 +49,7 @@ function liveChrome({ host = false } = {}) {
   const bar = h('div', { class: 'live-bar' }, form,
     ...(host
       ? [h('button', { class: 'icon-btn has-badge', type: 'button', 'data-act': 'guests', 'aria-label': t('guests'), title: t('guests'), html: icon.guests }, guestsBadge),
+         h('button', { class: 'icon-btn', type: 'button', 'data-act': 'moderation', 'aria-label': t('moderation'), title: t('moderation'), html: icon.shield }),
          h('button', { class: 'icon-btn', type: 'button', 'data-act': 'settings', 'aria-label': t('liveSettings'), title: t('liveSettings'), html: icon.gear })]
       : [stageBtn, giftBtn, likeBtn]),
     h('button', { class: 'icon-btn', type: 'button', 'data-act': 'share', 'aria-label': t('share'), html: icon.share }));
@@ -163,7 +164,14 @@ function connectUi(slide, session) {
   const offs = [
     session.on('state', state => {
       r.state.hidden = state === 'connected';
+      if (state === 'disconnected') { showRetry(slide, session.host ? t('liveUnavailable') : t('connectionLost')); return; }
       r.state.textContent = state === 'reconnecting' ? t('reconnecting') : state === 'connecting' ? t('joining') : '';
+    }),
+    // A guest (or the host) switched their camera off/on: show their avatar instead of a frozen frame.
+    session.on('camera', ({ participant, on }) => {
+      if (!participant) return;
+      if (participant === session.live.host.id) { if (!session.host) { r.cover.hidden = on; slide.classList.toggle('has-video', on); } return; }
+      r.guests.querySelector(`[data-uid="${cssId(participant)}"]`)?.classList.toggle('cam-off', !on);
     }),
     session.on('video', ({ element, isHost, participant, name }) => {
       if (isHost) {
@@ -235,6 +243,13 @@ function connectUi(slide, session) {
     session.on('audio-blocked', blocked => slide.classList.toggle('audio-blocked', !!blocked)),
   ];
   return () => { offs.forEach(off => off()); audio.remove(); };
+}
+
+/** Shows a message with a Retry button in the slide's status pill. */
+function showRetry(slide, message) {
+  const r = slide._refs;
+  r.state.hidden = false;
+  r.state.replaceChildren(h('span', {}, message), ' ', h('button', { class: 'pill-btn live-retry', type: 'button', 'data-act': 'retry' }, t('retry')));
 }
 
 /** Stream controls shared by the host and guests on stage (flip, mic, camera). Returns true when handled. */
@@ -350,9 +365,18 @@ export class LiveView {
     try { await session.join(); }
     catch (error) {
       if (this.session !== session) return;
-      slide._refs.state.hidden = false;
-      slide._refs.state.textContent = error.status === 401 ? t('signInToContinue') : t('liveUnavailable');
       console.warn('[live] join failed', error);
+      if (error.status === 404) {
+        slide._refs.state.hidden = false;
+        slide._refs.state.textContent = t('liveEnded');
+        setTimeout(() => { if (this.session === session) { this.#leave(); lives.refresh(); } }, 2200);
+      } else if (error.status === 401) {
+        slide._refs.state.hidden = false;
+        slide._refs.state.replaceChildren(h('button', { class: 'pill-btn', type: 'button', onclick: () => this.hooks.requireLogin() }, t('signInToContinue')));
+      } else if (error.status === 403) {
+        slide._refs.state.hidden = false;
+        slide._refs.state.textContent = error.message || t('liveUnavailable');
+      } else showRetry(slide, error?.name === 'NotAllowedError' ? t('cameraNeeded') : t('liveUnavailable'));
     }
   }
 
@@ -376,10 +400,16 @@ export class LiveView {
       }
       const button = event.target.closest('[data-act]');
       if (this.session && slide === this.activeSlide && streamControl(act, this.session, button, slide)) return;
-      if (act === 'close') this.hooks.onClose();
+      if (act === 'retry') { if (slide === this.pager.slideAt(this.pager.index)) { this.#leave(); this.#join(); } }
+      else if (act === 'close') this.hooks.onClose();
       else if (act === 'stage') { if (this.hooks.requireLogin() && this.session) this.#stageRequest(); }
       else if (act === 'leave-stage') { this.session?.leaveStage().catch(error => toast(error.message)); }
-      else if (act === 'guest' || act === 'comment' || act === 'unpin') { /* host-only actions */ }
+      else if (act === 'guest') {
+        // Viewers: a guest box opens that guest's profile.
+        const member = event.target.closest('.live-guest')?._member;
+        if (member?.userId && member.userId !== auth.userId) this.hooks.openProfile({ id: member.userId, name: member.name, avatar: member.avatar });
+      }
+      else if (act === 'comment' || act === 'unpin') { /* host-only actions */ }
       else if (act === 'like') { if (this.session) this.session.like(); }
       else if (act === 'gift') { if (this.hooks.requireLogin() && this.session) this.hooks.openGifts({ room: live.room, to: live.host, session: this.session }); }
       else if (act === 'share') shareLive(live);
@@ -466,12 +496,19 @@ export class LiveView {
       if (!act) return;
       if (streamControl(act, session, button, stage)) return;
       if (act === 'end') finish();
+      else if (act === 'retry') session.reconnect().catch(error => { toast(error?.message || t('liveUnavailable')); showRetry(stage, t('liveUnavailable')); });
       else if (act === 'share') shareLive(live);
       else if (act === 'guests') controls.openGuests();
       else if (act === 'settings') controls.openSettings();
       else if (act === 'viewers') controls.openViewers();
+      else if (act === 'moderation') controls.openModeration();
+      else if (act === 'profile') this.hooks.openProfile(live.host);
       else if (act === 'unpin') session.control('unpin').catch(error => toast(error.message));
-      else if (act === 'guest') { const member = button._member; if (member) controls.openPerson(member); }
+      else if (act === 'guest') {
+        // Boxes can appear (from the video track) before the room status names them.
+        const member = button._member || { userId: button.dataset.uid, name: button.querySelector('.live-guest-name')?.textContent || '', state: 'speaker' };
+        if (member.userId) controls.openPerson(member);
+      }
       else if (act === 'comment') {
         const line = button._event;
         if (line?.uid) controls.openPerson({ userId: line.uid, name: line.name }, { id: line.id, body: line.body });

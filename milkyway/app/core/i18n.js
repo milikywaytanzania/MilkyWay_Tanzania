@@ -37,6 +37,11 @@ const strings = {
     commentsOffNote: 'Comments are turned off', mutedNote: 'The host muted your comments', saved: 'Saved', guestMutedByHost: 'The host muted your mic',
     requestSent: 'Request sent to the host', declined: 'declined your invite', pinned: 'Pinned', moderation: 'Moderation', streamControls: 'Stream',
     guestsJoin: 'Guests', commentsOnly: 'comments only',
+    like: 'Like', previous: 'Previous', next: 'Next', close: 'Close', post: 'Post', openPost: 'Open post', postOptions: 'Post options',
+    deletePost: 'Delete post', tapAgainDelete: 'Tap again to delete', deleting: 'Deleting…', postDeleted: 'Post deleted',
+    deleteFailed: 'Could not delete this post', imageUnavailable: 'This photo could not be loaded', connectionLost: 'Connection lost',
+    wantsToJoin: 'wants to join as a guest', newRequests: 'new guest requests', removeGuestFirst: 'Remove a guest from the stage first',
+    openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite',
   },
   sw: {
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
@@ -75,6 +80,11 @@ const strings = {
     commentsOffNote: 'Maoni yamezimwa', mutedNote: 'Mwenyeji amenyamazisha maoni yako', saved: 'Imehifadhiwa', guestMutedByHost: 'Mwenyeji amezima maikrofoni yako',
     requestSent: 'Ombi limetumwa kwa mwenyeji', declined: 'amekataa mwaliko', pinned: 'Imebandikwa', moderation: 'Udhibiti', streamControls: 'Matangazo',
     guestsJoin: 'Wageni', commentsOnly: 'maoni tu',
+    like: 'Penda', previous: 'Iliyotangulia', next: 'Inayofuata', close: 'Funga', post: 'Post', openPost: 'Fungua post', postOptions: 'Chaguo za post',
+    deletePost: 'Futa post', tapAgainDelete: 'Gusa tena kufuta', deleting: 'Inafuta…', postDeleted: 'Post imefutwa',
+    deleteFailed: 'Imeshindikana kufuta post hii', imageUnavailable: 'Picha hii haikuweza kupakiwa', connectionLost: 'Muunganisho umekatika',
+    wantsToJoin: 'anaomba kujiunga kama mgeni', newRequests: 'maombi mapya ya wageni', removeGuestFirst: 'Ondoa mgeni jukwaani kwanza',
+    openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika',
   },
 };
 const language = (() => { try { return localStorage.getItem('mw_lang') || (navigator.language || 'en').slice(0, 2); } catch { return 'en'; } })();

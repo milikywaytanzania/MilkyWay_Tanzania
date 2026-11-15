@@ -1,14 +1,15 @@
 // Feed view: full-screen vertical short-video feed on top of VerticalPager + playback manager.
 //  - 3–5 slides in the DOM, recycled; video sources only on the active slide and its neighbours.
 //  - Renders the device copy instantly, then merges background refreshes without moving the user.
-//  - Double-tap to like (with burst), tap to pause / unmute, rail: profile+follow, like, comments, save, gift, share.
+//  - Double-tap to like (with burst), tap to pause / unmute (videos) or open full size (photos),
+//    rail: profile+follow, like, comments, save, gift, share.
 import { config } from '../config.js';
 import { auth } from '../core/net.js';
 import { bus } from '../core/events.js';
 import { device } from '../core/device.js';
-import { image, poster } from '../core/media.js';
+import { setImage, poster, mediaKind } from '../core/media.js';
 import { t } from '../core/i18n.js';
-import { feed, actions } from '../data/feed.js';
+import { feed, actions, deletedPosts } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
 import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
@@ -17,9 +18,9 @@ import { h, icon, count, toast, paintAvatar, brandMark } from './dom.js';
 const DOUBLE_TAP_MS = 260;
 
 export class FeedView {
-  constructor(root, { requireLogin, openComments, openGifts, openProfile }) {
+  constructor(root, { requireLogin, openComments, openGifts, openProfile, openPost }) {
     this.root = root;
-    this.hooks = { requireLogin, openComments, openGifts, openProfile };
+    this.hooks = { requireLogin, openComments, openGifts, openProfile, openPost };
     this.scope = null;
     this.unsubscribe = null;
     this.interacted = false;
@@ -64,8 +65,9 @@ export class FeedView {
   focus() { this.surface.focus({ preventScroll: true }); }
 
   #apply(value) {
-    const incoming = value?.posts || [];
-    const current = this.pager.items;
+    const live = post => !deletedPosts.has(post.id);
+    const incoming = (value?.posts || []).filter(live);
+    const current = this.pager.items.filter(live);
     let items = incoming;
     if (current.length && (this.interacted || this.pager.index > 0)) {
       // The user is mid-feed: update what they have, append what's new at the end — never jump.
@@ -98,8 +100,9 @@ export class FeedView {
     const img = h('img', { alt: '', decoding: 'async', draggable: 'false' });
     const text = h('div', { class: 'text-card' });
     const paused = h('span', { class: 'paused-badge', html: icon.play, hidden: true });
-    const media = h('div', { class: 'media', 'data-act': 'media' }, video, img, text, paused);
-    const avatarNode = h('span', { class: 'avatar', style: '--s:46px' });
+    const missing = h('p', { class: 'media-missing', hidden: true }, t('imageUnavailable'));
+    const media = h('div', { class: 'media', 'data-act': 'media' }, video, img, text, missing, paused);
+    const avatarNode = h('span', { class: 'avatar' });
     const follow = h('span', { class: 'follow-plus', 'data-act': 'follow', role: 'button', 'aria-label': t('follow'), html: icon.plus });
     const rail = (act, svg, label) => h('button', { class: `rail-btn rail-${act}`, type: 'button', 'data-act': act, 'aria-label': label }, h('span', { class: 'rail-icon', html: svg }), h('b', {}, ''));
     const like = rail('like', icon.heart, 'Like');
@@ -115,7 +118,7 @@ export class FeedView {
       h('aside', { class: 'rail' }, h('div', { class: 'rail-author', 'data-act': 'profile' }, avatarNode, follow), like, comment, save, gift, share),
       h('div', { class: 'meta' }, name, caption),
       h('div', { class: 'progress', 'aria-hidden': 'true' }, bar));
-    slide._refs = { video, img, text, paused, avatarNode, follow, like, comment, save, gift, share, name, caption, bar };
+    slide._refs = { video, img, text, paused, missing, avatarNode, follow, like, comment, save, gift, share, name, caption, bar };
     // Portrait media fills the screen; landscape media is letterboxed instead of cropped.
     const fit = (w, h) => { if (w && h) slide.dataset.fit = h >= w * 1.2 ? 'cover' : 'contain'; };
     video.addEventListener('loadedmetadata', () => fit(video.videoWidth, video.videoHeight));
@@ -127,22 +130,28 @@ export class FeedView {
   #bind(slide, post) {
     slide._post = post;
     const r = slide._refs;
-    const type = post.media?.type || 'text';
+    const type = mediaKind(post);
     slide.dataset.type = type;
     r.video.hidden = type !== 'video';
     r.img.hidden = type !== 'image';
     r.text.hidden = type !== 'text';
     r.paused.hidden = true;
+    r.missing.hidden = true;
     delete slide.dataset.fit;
     r.bar.style.transform = 'scaleX(0)';
     if (type === 'video') {
       const still = poster(post.media.url, device.mediaWidth);
       still ? (r.video.poster = still) : r.video.removeAttribute('poster');
     } else r.video.removeAttribute('poster');
-    if (type === 'image') { r.img.fetchPriority = 'high'; r.img.src = image(post.media.url, device.mediaWidth); }
-    else r.img.removeAttribute('src');
+    if (type === 'image') {
+      r.img.hidden = false;
+      r.img.alt = post.caption || '';
+      r.img.fetchPriority = 'high';
+      setImage(r.img, post.media.url, device.mediaWidth, { onFail: () => { if (slide._post !== post) return; r.img.hidden = true; r.missing.hidden = false; } });
+    }
+    else { r.img.onerror = null; r.img.removeAttribute('src'); }
     r.text.textContent = type === 'text' ? post.caption : '';
-    paintAvatar(r.avatarNode, post.author, 46);
+    paintAvatar(r.avatarNode, post.author, 40);
     r.name.textContent = `@${post.author.username || post.author.name}`;
     r.caption.textContent = type === 'text' ? '' : post.caption;
     r.caption.classList.remove('open');
@@ -180,7 +189,7 @@ export class FeedView {
     const active = this.pager.index;
     mounted.forEach((slide, index) => {
       const post = slide._post;
-      const url = post?.media?.type === 'video' ? post.media.url : null;
+      const url = post && mediaKind(post) === 'video' ? post.media.url : null;
       playback.source(slide._refs.video, url, index - active, { saveData: device.saveData });
     });
   }
@@ -189,7 +198,7 @@ export class FeedView {
     this.progressOff?.();
     const slide = this.pager.slideAt(this.pager.index);
     const video = slide?._refs.video;
-    if (!video || slide._post?.media?.type !== 'video') return;
+    if (!video || !slide._post || mediaKind(slide._post) !== 'video') return;
     const bar = slide._refs.bar;
     const tick = () => { if (video.duration) bar.style.transform = `scaleX(${video.currentTime / video.duration})`; };
     video.addEventListener('timeupdate', tick);
@@ -230,7 +239,12 @@ export class FeedView {
   }
 
   #tap(slide) {
-    if (slide._post?.media?.type !== 'video') return;
+    const post = slide._post;
+    if (!post) return;
+    const kind = mediaKind(post);
+    // Photos open full size in the post popup (pinch-free zoom, comments, likes), like a tap on a Nova grid tile.
+    if (kind === 'image') { if (slide._refs.missing.hidden) this.hooks.openPost?.(post); return; }
+    if (kind !== 'video') return;
     const video = slide._refs.video;
     if (playback.muted) { playback.setMuted(false); if (video.paused) playback.toggle(video); return; }
     const playing = playback.toggle(video);
