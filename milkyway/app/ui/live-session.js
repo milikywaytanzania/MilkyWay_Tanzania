@@ -17,6 +17,8 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TOPIC = 'mw';
 const SAFETY_POLL_MS = 20_000;
+const HOST_POLL_MS = 4_000;   // the host watches guest requests closely
+const STAGE_POLL_MS = 5_000;  // viewers who requested, were invited or are on stage
 const HOST_GRACE_MS = 25_000;
 const tokenCache = new Map(); // room → { payload, at }
 
@@ -66,7 +68,13 @@ export class LiveSession extends Emitter {
     this.closed = false;
     this.viewers = 0;
     this.likeBatch = 0;
+    this.status = null;      // last /live-room status: settings, self, members, messages
+    this.onStage = false;    // a guest currently publishing
+    this.approving = new Set();
   }
+
+  get settings() { return this.status?.settings || {}; }
+  get self() { return this.status?.self || null; }
 
   /** Connects media + event channels. Resolves when watching (or throws with a readable message). */
   async join() {
@@ -88,11 +96,20 @@ export class LiveSession extends Emitter {
 
     room
       .on(RoomEvent.TrackSubscribed, (track, _pub, participant) => this.#attach(track, participant, Track))
-      .on(RoomEvent.TrackUnsubscribed, track => track.detach().forEach(element => element.remove()))
+      .on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => { track.detach().forEach(element => element.remove()); if (track.kind === 'video') this.emit('video-gone', participant.identity); })
       .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') this.#attach(publication.track, room.localParticipant, Track, true); })
-      .on(RoomEvent.ParticipantConnected, participant => { this.#countViewers(); if (participant.identity === this.live.host.id) clearTimeout(this.hostTimer); })
+      .on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.kind === 'video' || publication.track?.kind === 'video') { publication.track?.detach().forEach(element => element.remove()); this.emit('video-gone', room.localParticipant.identity); } })
+      .on(RoomEvent.TrackMuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: true }))
+      .on(RoomEvent.TrackUnmuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: false }))
+      .on(RoomEvent.ParticipantPermissionsChanged, (_prev, participant) => { if (participant === room.localParticipant || participant?.isLocal) this.#syncStage(); })
+      .on(RoomEvent.ParticipantConnected, participant => {
+        this.#countViewers(); this.emit('audience');
+        if (participant.identity === this.live.host.id) clearTimeout(this.hostTimer);
+        // Someone the host removed tried to come back: disconnect them again.
+        if (this.host && this.settings.blockedIds?.includes(participant.identity)) this.control('kick', { target: participant.identity }, { quiet: true }).catch(() => {});
+      })
       .on(RoomEvent.ParticipantDisconnected, participant => {
-        this.#countViewers();
+        this.#countViewers(); this.emit('audience');
         if (!this.host && participant.identity === this.live.host.id) {
           clearTimeout(this.hostTimer);
           this.hostTimer = setTimeout(() => this.#ended(), HOST_GRACE_MS);
@@ -102,7 +119,12 @@ export class LiveSession extends Emitter {
       .on(RoomEvent.Reconnecting, () => this.emit('state', 'reconnecting'))
       .on(RoomEvent.Reconnected, () => { this.emit('state', 'connected'); this.#loadHistory(); })
       .on(RoomEvent.AudioPlaybackStatusChanged, () => this.emit('audio-blocked', !room.canPlaybackAudio))
-      .on(RoomEvent.Disconnected, reason => { if (!this.closed && reason != null && reason === sdk.DisconnectReason?.ROOM_DELETED) this.#ended(); else if (!this.closed) this.emit('state', 'disconnected'); });
+      .on(RoomEvent.Disconnected, reason => {
+        if (this.closed) return;
+        if (reason != null && reason === sdk.DisconnectReason?.ROOM_DELETED) this.#ended();
+        else if (reason != null && reason === sdk.DisconnectReason?.PARTICIPANT_REMOVED) this.#removed();
+        else this.emit('state', 'disconnected');
+      });
 
     await room.connect(token.serverUrl, token.token, { autoSubscribe: true });
     if (this.closed) { room.disconnect(); return; }
@@ -113,13 +135,13 @@ export class LiveSession extends Emitter {
     }
     room.startAudio?.().catch(() => this.emit('audio-blocked', true));
     if (this.host) await this.#publish();
-    this.poll = setInterval(() => document.visibilityState === 'visible' && this.#loadHistory(), SAFETY_POLL_MS);
+    this.#schedulePoll();
     this.flushLikes = setInterval(() => this.#sendLikes(), 500);
   }
 
   async leave() {
     this.closed = true;
-    clearInterval(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer);
+    clearTimeout(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer); clearTimeout(this.nudgeTimer);
     this.#sendLikes();
     try { await this.room?.disconnect(); } catch {}
     try { if (this.channel) (await supabase()).removeChannel(this.channel); } catch {}
@@ -130,18 +152,24 @@ export class LiveSession extends Emitter {
   resumeAudio() { return this.room?.startAudio?.(); }
 
   // ---- Sending ---------------------------------------------------------------------------------------------
+  /** Sends a comment. The server applies the host's rules first; only accepted comments reach other viewers. */
   async comment(text) {
     const body = text.trim().slice(0, 300);
     if (!body) return;
     const event = { t: 'chat', id: crypto.randomUUID(), uid: auth.userId, name: auth.name, body, at: Date.now() };
-    this.#deliver(event);          // optimistic, instant
-    this.#broadcast(event, true);  // everyone, sub-second
+    this.#deliver(event); // optimistic, instant for the sender
+    try {
+      const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'message', id: event.id, message: body } });
+      if (result?.filtered) return; // hidden from everyone else, like a filtered TikTok comment
+    } catch (error) {
+      if (!isNetworkError(error)) { this.emit('comment-rejected', { id: event.id, error }); return; }
+    }
+    this.#broadcast(event, true);
     this.#legacy({ type: 'lv-sync' });
-    try { await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'message', id: event.id, message: body } }); }
-    catch (error) { if (!isNetworkError(error)) this.emit('error', error); }
   }
 
   like() {
+    if (this.settings.likesEnabled === false) return;
     this.likeBatch += 1;
     this.emit('like', { n: 1, mine: true });
   }
@@ -154,20 +182,59 @@ export class LiveSession extends Emitter {
     return result;
   }
 
-  // Host controls
+  // ---- Stream controls (host, and guests on stage) ---------------------------------------------------------
   async flipCamera() {
     const track = this.room?.localParticipant.getTrackPublication(this.sdk.Track.Source.Camera)?.track;
     if (!track) return;
     this.facing = this.facing === 'environment' ? 'user' : 'environment';
     await track.restartTrack({ facingMode: this.facing });
+    this.emit('facing', this.facing);
   }
   async toggleMic() {
     const lp = this.room?.localParticipant;
     if (!lp) return true;
+    if (!this.host && this.self?.hostMuted) throw new Error('The host muted your microphone.');
     const next = !lp.isMicrophoneEnabled;
     await lp.setMicrophoneEnabled(next);
     return next;
   }
+  async toggleCamera() {
+    const lp = this.room?.localParticipant;
+    if (!lp || this.mode !== 'video') return false;
+    const next = !lp.isCameraEnabled;
+    await lp.setCameraEnabled(next, { facingMode: this.facing || 'user' });
+    this.#broadcast({ t: 'cam', id: crypto.randomUUID(), uid: auth.userId, on: next }, true);
+    return next;
+  }
+  get micOn() { return !!this.room?.localParticipant?.isMicrophoneEnabled; }
+  get cameraOn() { return !!this.room?.localParticipant?.isCameraEnabled; }
+
+  /** Everyone connected to the LiveKit room right now (identity + name), excluding the host. */
+  audience() {
+    if (!this.room) return [];
+    return [...this.room.remoteParticipants.values()]
+      .filter(participant => participant.identity !== this.live.host.id)
+      .map(participant => ({ userId: participant.identity, name: participant.name || '' }));
+  }
+
+  /** Host moderation / guest action through the server, then everyone refreshes. */
+  async control(action, extra = {}, { quiet = false } = {}) {
+    const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action, ...extra } });
+    if (result?.settings && this.status) this.status = { ...this.status, settings: result.settings };
+    this.#nudge(this.host ? '' : 'host'); // a viewer's stage change only concerns the host
+    if (!quiet) await this.refresh();
+    return result;
+  }
+
+  // ---- Guest actions (viewers) ----------------------------------------------------------------------------
+  async requestStage() { const result = await this.control('request'); return result?.state; }
+  async acceptInvite() { const result = await this.control('accept-invite'); return result?.state; }
+  async declineInvite() {
+    await this.control('decline-invite');
+    this.#broadcast({ t: 'decline', id: crypto.randomUUID(), uid: auth.userId }, true);
+  }
+  async leaveStage() { await this.control('leave-stage'); await this.#syncStage(); }
+
   async end() {
     try { await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'end' } }); } catch {}
     const event = { t: 'end', id: crypto.randomUUID(), at: Date.now() };
@@ -175,13 +242,85 @@ export class LiveSession extends Emitter {
     await this.leave();
   }
 
+  /** Re-reads the room (settings, stage, chat history). Public so the UI can refresh after an action. */
+  refresh() { return this.#loadHistory(); }
+
   // ---- Internals -------------------------------------------------------------------------------------------
   async #publish() {
     const lp = this.room.localParticipant;
     await lp.setMicrophoneEnabled(true);
     if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: 'user' });
-    api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'settings', layout: 4, admission: 'direct', order: [] } }).catch(() => {});
+    this.facing = 'user';
+    // Starting settings chosen in the Go LIVE sheet (guests, comments); everything else keeps its defaults.
+    const initial = { layout: 4, admission: 'approval', order: [], ...(this.live.initialSettings || {}) };
+    api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'settings', ...initial } })
+      .then(result => { if (result?.settings) this.status = { ...(this.status || {}), settings: result.settings }; this.refresh(); })
+      .catch(() => {});
     api('/api/milkyway-notifications?action=live-started', { method: 'POST', body: { room: this.live.room } }).catch(() => {});
+  }
+
+  // Publishes or unpublishes the guest's camera/mic to match their seat on stage.
+  async #syncStage() {
+    if (this.host || !this.room || this.closed) return;
+    const self = this.self;
+    const lp = this.room.localParticipant;
+    const seated = self?.state === 'speaker';
+    try {
+      if (seated && lp.permissions?.canPublish !== false) {
+        if (!this.onStage) {
+          this.onStage = true;
+          if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: this.facing || 'user' });
+          if (!self.hostMuted) await lp.setMicrophoneEnabled(true);
+          this.emit('stage', { onStage: true });
+        }
+        if (self.hostMuted && lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(false);
+      } else if (!seated && this.onStage) {
+        this.onStage = false;
+        await lp.setCameraEnabled(false).catch(() => {});
+        await lp.setMicrophoneEnabled(false).catch(() => {});
+        this.emit('stage', { onStage: false });
+      }
+    } catch (error) {
+      this.onStage = false; // permission not granted yet; the next refresh retries
+      if (error?.name === 'NotAllowedError') this.emit('error', Object.assign(new Error('Camera and microphone are needed to join as a guest.'), { status: 0 }));
+    }
+  }
+
+  #schedulePoll() {
+    clearTimeout(this.poll);
+    if (this.closed) return;
+    const busy = this.host || ['pending', 'speaker'].includes(this.self?.state) || this.self?.invited;
+    this.poll = setTimeout(async () => {
+      if (document.visibilityState === 'visible') await this.#loadHistory();
+      this.#schedulePoll();
+    }, this.host ? HOST_POLL_MS : busy ? STAGE_POLL_MS : SAFETY_POLL_MS);
+  }
+
+  // Tells everyone in the room that the room state changed, so they refresh now instead of at the next poll.
+  #nudge(to = '') { this.#broadcast({ t: 'room', id: crypto.randomUUID(), uid: auth.userId, to }, true); }
+
+  #onNudge() {
+    clearTimeout(this.nudgeTimer);
+    // Spread viewer refreshes so a host action does not hit the API with every viewer at the same instant.
+    this.nudgeTimer = setTimeout(() => this.#loadHistory(), this.host ? 150 : 250 + Math.random() * 1250);
+  }
+
+  // The host's app approves guests who accepted an invitation (publish rights can only be granted by the host).
+  #autoApprove(status) {
+    if (!this.host) return;
+    for (const member of status.members || []) {
+      if (member.state !== 'pending' || !member.invited || this.approving.has(member.userId)) continue;
+      this.approving.add(member.userId);
+      this.control('approve', { target: member.userId }, { quiet: true })
+        .catch(error => this.emit('error', error))
+        .finally(() => { this.approving.delete(member.userId); this.#onNudge(); });
+    }
+  }
+
+  #removed() {
+    if (this.removedOnce) return;
+    this.removedOnce = true;
+    this.emit('removed');
   }
 
   #attach(track, participant, Track, local = false) {
@@ -190,8 +329,9 @@ export class LiveSession extends Emitter {
     element.playsInline = true;
     element.muted = true;
     element.className = 'live-track';
-    if (local) element.classList.add('mirror');
-    this.emit('video', { element, participant: participant.identity, isHost: participant.identity === this.live.host.id || local });
+    if (local) element.classList.add('local');
+    if (local && this.facing !== 'environment') element.classList.add('mirror');
+    this.emit('video', { element, participant: participant.identity, name: participant.name || '', local, isHost: participant.identity === this.live.host.id });
   }
 
   #countViewers() {
@@ -234,11 +374,13 @@ export class LiveSession extends Emitter {
     this.#legacy({ type: 'lv-heart' });
   }
 
-  #receive(payload) {
+  #receive(payload, participant) {
     let message;
     try { message = JSON.parse(decoder.decode(payload)); } catch { return; }
     if (message?.type === 'lv-heart') return this.emit('like', { n: 1 });
     if (message?.type === 'lv-sync') return this.#loadHistory();
+    // LiveKit data is authenticated: the sender's identity replaces whatever the payload claims.
+    if (message && participant?.identity) message.uid = participant.identity;
     this.#handle(message);
   }
 
@@ -247,26 +389,47 @@ export class LiveSession extends Emitter {
     this.#deliver(event);
   }
 
+  // Comments from people the host muted or removed (or while comments are off) never render, even if a modified
+  // client broadcasts them directly.
+  #hidden(event) {
+    if (event.uid === auth.userId || event.uid === this.live.host.id) return false;
+    const settings = this.settings;
+    return settings.comments === 'off' || settings.mutedIds?.includes(event.uid) || settings.blockedIds?.includes(event.uid);
+  }
+
   #deliver(event) {
     this.seen.add(event.id);
     if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value);
-    if (event.t === 'chat') this.emit('comment', event);
+    if (event.t === 'chat') { if (!this.#hidden(event)) this.emit('comment', event); }
     else if (event.t === 'gift') this.emit('gift', event);
-    else if (event.t === 'like') this.emit('like', { n: Math.min(event.n || 1, 50) });
+    else if (event.t === 'like') { if (this.settings.likesEnabled !== false) this.emit('like', { n: Math.min(event.n || 1, 50) }); }
     else if (event.t === 'end') this.#ended();
+    else if (event.t === 'room') { if (!event.to || (event.to === 'host' && this.host)) this.#onNudge(); }
+    else if (event.t === 'cam') this.emit('camera', { participant: event.uid, on: !!event.on });
+    else if (event.t === 'decline' && this.host && event.uid) this.control('cancel-invite', { target: event.uid }, { quiet: true }).then(() => this.emit('declined', event.uid)).catch(() => {});
   }
 
   async #loadHistory() {
-    if (!auth.signedIn() || this.loadingHistory) return;
+    if (!auth.signedIn() || this.loadingHistory || this.closed) return;
     this.loadingHistory = true;
     try {
       const status = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'status' }, timeout: 10000 });
-      for (const message of status?.messages || []) {
-        if (message.deleted || message.kind !== 'chat' || this.seen.has(message.id)) continue;
+      if (this.closed || !status) return;
+      const before = this.status;
+      this.status = status;
+      for (const message of status.messages || []) {
+        if (message.deleted) { if (this.seen.has(message.id)) this.emit('comment-deleted', message.id); continue; }
+        if (message.kind !== 'chat' || this.seen.has(message.id)) continue;
         this.#deliver({ t: 'chat', id: message.id, uid: message.userId, name: message.name, body: message.body, at: Date.parse(message.createdAt), history: true });
       }
+      if (!this.host && status.self?.invited && !before?.self?.invited) this.emit('invited');
+      this.emit('room', status);
+      this.#autoApprove(status);
+      await this.#syncStage();
+      if (!this.host) this.#schedulePoll();
     } catch (error) {
       if (error.status === 404) this.#ended();
+      else if (error.status === 403 && !this.host) this.#removed();
     } finally { this.loadingHistory = false; }
   }
 

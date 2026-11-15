@@ -16,6 +16,22 @@ function getSupabaseConfig(req) {
   return { url, apiKey };
 }
 
+const LIVE_ROOM = /^mw-(audio|video)-live-[a-f0-9-]{36}$/i;
+
+async function removedFromLive(url, apiKey, authorization, body) {
+  const room = typeof body?.room === 'string' ? body.room : typeof body?.roomName === 'string' ? body.roomName : '';
+  if (body?.role !== 'viewer' || !LIVE_ROOM.test(room) || !authorization || !/^Bearer\s+\S+$/i.test(authorization)) return false;
+  const headers = { apikey: apiKey, Authorization: authorization, Accept: 'application/json' };
+  try {
+    const [user, rows] = await Promise.all([
+      fetch(`${url}/auth/v1/user`, { headers, signal: AbortSignal.timeout(5000) }).then(r => (r.ok ? r.json() : null)),
+      fetch(`${url}/rest/v1/mw_live_room_settings?room_name=eq.${encodeURIComponent(room)}&select=settings&limit=1`, { headers, signal: AbortSignal.timeout(5000) }).then(r => (r.ok ? r.json() : [])),
+    ]);
+    const blocked = rows?.[0]?.settings?.blockedIds;
+    return !!user?.id && Array.isArray(blocked) && blocked.includes(String(user.id).toLowerCase());
+  } catch { return false; } // the host's app also disconnects removed viewers, so a lookup failure never blocks everyone
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -47,6 +63,11 @@ export default async function handler(req, res) {
     if (serialized.length > 4096) return res.status(413).json({ error: 'Request too large.' });
     headers['Content-Type'] = 'application/json';
     options.body = serialized;
+  }
+
+  // People the host removed from a LIVE cannot get a new viewer token for that room.
+  if (req.method === 'POST' && await removedFromLive(url, apiKey, authorization, req.body)) {
+    return res.status(403).json({ error: 'The host removed you from this LIVE.' });
   }
 
   try {

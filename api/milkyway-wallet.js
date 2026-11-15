@@ -1,6 +1,7 @@
 // MilkyWay Coins wallet API. Every action calls a SECURITY DEFINER function from
 // supabase/migrations/20261105_milkyway_api_wallet.sql as the signed-in user; the database enforces all money rules.
 import { ApiError, route, requireUuid } from './_lib/supa.js';
+import { loadLiveSettings } from './_lib/live-policy.js';
 
 const NETWORKS = ['mpesa', 'mixx', 'airtel', 'halopesa'];
 const TOPUP_PACKAGES = [100, 500, 1000, 5000, 10000];
@@ -102,6 +103,11 @@ export default route({
     const room = text(body.room, 200), postId = body.postId, storyId = body.storyId;
     const targets = [room, postId, storyId].filter(Boolean).length;
     if (targets !== 1) throw new ApiError(400, 'Choose one place to send the gift.');
+    if (room && /^mw-(audio|video)-live-/.test(room)) {
+      const live = await loadLiveSettings(ctx, room);
+      if (live.giftsEnabled === false) throw new ApiError(403, 'The host turned off gifts for this LIVE.');
+      if (live.blockedIds.includes(String(ctx.user.id).toLowerCase())) throw new ApiError(403, 'The host removed you from this LIVE.');
+    }
     const result = await rpc(ctx, 'mw_wallet_send_gift', {
       p_gift: gift, p_room: room || null,
       p_post: postId ? requireUuid(postId, 'post id') : null,
