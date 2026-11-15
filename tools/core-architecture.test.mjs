@@ -83,6 +83,14 @@ test('homepage APK download is a native static-file link', () => {
   assert.match(server, /'Content-Type': 'application\/vnd\.android\.package-archive'/);
 });
 
+test('mobile root visitors go directly to the immersive MilkyWay app', () => {
+  const homepage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  assert.match(homepage, /matchMedia\('\(max-width: 767px\)'\)\.matches\)location\.replace\('\/milkyway\/'\+location\.search\+location\.hash\)/);
+  assert.ok(homepage.indexOf('location.replace') < homepage.indexOf('https://cdn.jsdelivr.net/npm/@supabase/supabase-js'), 'redirect runs before homepage third-party resources');
+  assert.match(serviceWorker, /version: 'v13'/);
+});
+
 test('feed sharing uses native share or a short copy toast, and failed media uses an icon fallback', () => {
   const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
   const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
