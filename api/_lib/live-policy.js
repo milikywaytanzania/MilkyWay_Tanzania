@@ -18,6 +18,8 @@ export function normalizeLiveSettings(raw) {
   value.blockedIds = ids(value.blockedIds);
   value.filterWords = Array.isArray(value.filterWords) ? value.filterWords.filter(word => typeof word === 'string' && word.trim()).slice(0, 50) : [];
   value.invites = value.invites && typeof value.invites === 'object' && !Array.isArray(value.invites) ? value.invites : {};
+  // Nobody goes on stage without the host: the old "anyone can join" admission now means "request & approve".
+  value.admission = value.admission === 'broadcast' ? 'broadcast' : 'approval';
   return value;
 }
 

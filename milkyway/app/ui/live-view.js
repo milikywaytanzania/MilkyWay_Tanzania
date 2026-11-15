@@ -114,7 +114,8 @@ function resetStage(slide) {
   slide.classList.remove('has-guests');
   r.requests.hidden = true;
   r.requests.replaceChildren();
-  slide._lastState = null;
+  slide._lastSelf = null;
+  slide._selfCancelled = false;
   r.input.disabled = false;
   r.input.placeholder = t('sayHi');
   r.viewersWrap.hidden = false;
@@ -129,10 +130,18 @@ function guestTile(slide, userId, name = '') {
   const r = slide._refs;
   let tile = r.guests.querySelector(`[data-uid="${cssId(userId)}"]`);
   if (!tile) {
+    // The host gets one-tap controls on every guest box: mute / allow mic, move back to the audience, remove from LIVE.
+    const hostTools = slide.classList.contains('host-stage')
+      ? h('div', { class: 'live-guest-tools', 'data-no-swipe': true },
+          h('button', { class: 'live-guest-btn', type: 'button', 'data-act': 'guest-mute', 'data-uid': userId, 'aria-label': t('muteMic'), title: t('muteMic'), html: icon.mic }),
+          h('button', { class: 'live-guest-btn', type: 'button', 'data-act': 'guest-remove', 'data-uid': userId, 'aria-label': t('removeFromStage'), title: t('removeFromStage'), html: icon.leave }),
+          h('button', { class: 'live-guest-btn danger', type: 'button', 'data-act': 'guest-kick', 'data-uid': userId, 'aria-label': t('removeFromLive'), title: t('removeFromLive'), html: icon.close }))
+      : null;
     tile = h('div', { class: 'live-guest', 'data-uid': cssId(userId), 'data-act': 'guest' },
       h('span', { class: 'avatar live-guest-avatar', style: '--s:44px' }),
       h('span', { class: 'live-guest-name' }, name || 'MilkyWay'),
-      h('span', { class: 'live-guest-mic', html: icon.muted, hidden: true }));
+      h('span', { class: 'live-guest-mic', html: icon.muted, hidden: true }),
+      hostTools);
     paintAvatar(tile.querySelector('.avatar'), { name }, 44);
     r.guests.append(tile);
   }
@@ -161,26 +170,16 @@ function applyRoom(slide, session, status) {
     const blockedNote = settings.comments === 'off' ? t('commentsOffNote') : self.commentMuted ? t('mutedNote') : '';
     r.input.disabled = !!blockedNote;
     r.input.placeholder = blockedNote || (settings.slowMode ? `${t('sayHi')} · ${t('slowMode')} ${settings.slowMode}${t('seconds')}` : t('sayHi'));
-    const seated = self.state === 'speaker';
-    const pending = self.state === 'pending';
-    const canAsk = settings.admission !== 'broadcast' && settings.allowRequests !== false;
-    // Every viewer who is not already on stage sees the button. When the host is not taking requests it stays
-    // visible (dimmed) and tapping it explains why, instead of silently switching to a view-only layout.
-    r.stageBtn.hidden = seated;
-    r.stageBtn.classList.toggle('closed', !canAsk && !pending && !self.invited);
-    r.stageBtn.classList.toggle('pending', pending);
-    r.stageBtn.classList.toggle('invited', !!self.invited && !pending);
-    const label = pending ? t('requested') : self.invited ? t('joinAsGuest') : settings.admission === 'direct' ? t('joinAsGuest') : t('requestJoin');
-    r.stageLabel.textContent = label;
-    r.stageBtn.setAttribute('aria-label', label);
-    r.stageBtn.title = label;
-    slide.classList.toggle('can-request', !r.stageBtn.hidden);
-    // The host turned the request down (pending → viewer without a seat).
-    if (slide._lastState === 'pending' && self.state === 'viewer') toast(t('requestDeclined'));
-    slide._lastState = self.state;
-    slide.classList.toggle('on-stage', seated);
-    r.micBtn.classList.toggle('off', seated && (self.hostMuted || !session.micOn));
-    r.camBtn.classList.toggle('off', seated && !session.cameraOn);
+    paintStageButton(slide, session);
+    // Host decisions about this viewer, read from the server record.
+    const was = slide._lastSelf;
+    if (was?.state === 'pending' && self.state === 'viewer' && !slide._selfCancelled) toast(t('requestDeclined'));
+    if (was?.state === 'speaker' && self.state === 'viewer' && !slide._selfCancelled) toast(t('movedToAudience'));
+    if (was?.state === 'speaker' && self.state === 'speaker' && !was.hostMuted && self.hostMuted) toast(t('guestMutedByHost'));
+    if (was?.state === 'speaker' && self.state === 'speaker' && was.hostMuted && !self.hostMuted) toast(t('hostAllowedMic'));
+    if (self.state !== 'pending' && self.state !== 'speaker') slide._selfCancelled = false;
+    slide._lastSelf = { state: self.state, hostMuted: !!self.hostMuted };
+    paintMedia(slide, session.media);
   } else {
     const waiting = (status.members || []).filter(member => member.state === 'pending' && !member.invited).length;
     r.guestsBadge.hidden = !waiting;
@@ -197,9 +196,55 @@ function applyRoom(slide, session, status) {
     tile.querySelector('.live-guest-name').textContent = member.userId === auth.userId ? t('youAreOnStage') : member.name || 'MilkyWay';
     paintAvatar(tile.querySelector('.avatar'), member, 44);
     tile.querySelector('.live-guest-mic').hidden = !member.hostMuted;
+    const muteBtn = tile.querySelector('[data-act="guest-mute"]');
+    if (muteBtn) {
+      const label = member.hostMuted ? t('unmuteMic') : t('muteMic');
+      muteBtn.innerHTML = member.hostMuted ? icon.muted : icon.mic;
+      muteBtn.classList.toggle('off', !!member.hostMuted);
+      muteBtn.setAttribute('aria-label', label); muteBtn.title = label;
+    }
     tile._member = member;
   }
   layoutGrid(slide);
+}
+
+/** Viewer's join button, from the session's stage state:
+ *  audience → "Request to join", requested → "Requested · tap to cancel", invited → "Join as guest",
+ *  joining → "Joining…" (approved, rights arriving), guest → hidden (the guest controls take over). */
+function paintStageButton(slide, session) {
+  const r = slide._refs;
+  if (session.host) return;
+  const settings = session.settings;
+  const stage = session.stage;
+  const canAsk = settings.admission !== 'broadcast' && settings.allowRequests !== false;
+  const label = stage === 'requested' ? t('requested') : stage === 'invited' ? t('joinAsGuest') : stage === 'joining' ? t('joiningStage') : t('requestJoin');
+  r.stageBtn.hidden = stage === 'guest';
+  r.stageBtn.disabled = stage === 'joining';
+  r.stageBtn.classList.toggle('pending', stage === 'requested' || stage === 'joining');
+  r.stageBtn.classList.toggle('invited', stage === 'invited');
+  r.stageBtn.classList.toggle('closed', stage === 'audience' && !canAsk);
+  r.stageBtn.setAttribute('aria-pressed', String(stage === 'requested'));
+  r.stageLabel.textContent = label;
+  r.stageBtn.setAttribute('aria-label', label);
+  r.stageBtn.title = label;
+  slide.classList.toggle('can-request', !r.stageBtn.hidden);
+  slide.classList.toggle('on-stage', stage === 'guest');
+}
+
+/** Mic / camera buttons of the host or a guest on stage, from the real LiveKit track state. */
+function paintMedia(slide, media) {
+  const r = slide._refs;
+  if (!media) return;
+  const micLabel = media.hostMuted ? t('guestMutedByHost') : media.mic ? t('muteMyMic') : t('unmuteMyMic');
+  r.micBtn.classList.toggle('off', !media.mic);
+  r.micBtn.classList.toggle('locked', !!media.hostMuted);
+  r.micBtn.innerHTML = media.mic ? icon.mic : icon.muted;
+  r.micBtn.setAttribute('aria-pressed', String(!media.mic));
+  r.micBtn.setAttribute('aria-label', micLabel); r.micBtn.title = micLabel;
+  const camLabel = media.camera ? t('cameraOffAction') : t('cameraOnAction');
+  r.camBtn.classList.toggle('off', !media.camera);
+  r.camBtn.setAttribute('aria-pressed', String(!media.camera));
+  r.camBtn.setAttribute('aria-label', camLabel); r.camBtn.title = camLabel;
 }
 
 const REQUESTS_SHOWN = 3;
@@ -295,6 +340,8 @@ function connectUi(slide, session) {
     }),
     session.on('comment-deleted', id => r.comments.querySelector(`[data-id="${cssId(id)}"]`)?.remove()),
     session.on('room', status => applyRoom(slide, session, status)),
+    session.on('stage-state', () => paintStageButton(slide, session)),
+    session.on('media', media => paintMedia(slide, media)),
     session.on('stage', ({ onStage }) => { slide.classList.toggle('on-stage', onStage); if (onStage) toast(t('youAreOnStage')); }),
     session.on('error', error => { if (error?.message) toast(error.message); }),
     session.on('like', ({ n }) => {
@@ -330,18 +377,15 @@ function showRetry(slide, message) {
   r.state.replaceChildren(h('span', {}, message), ' ', h('button', { class: 'pill-btn live-retry', type: 'button', 'data-act': 'retry' }, t('retry')));
 }
 
-/** Stream controls shared by the host and guests on stage (flip, mic, camera). Returns true when handled. */
-function streamControl(act, session, button, slide) {
+/** Stream controls shared by the host and guests on stage (flip, mic, camera). Returns true when handled.
+ *  Buttons repaint from the session's 'media' event, i.e. from the real track state. */
+function streamControl(act, session, _button, slide) {
   if (act === 'flip') { session.flipCamera().catch(error => toast(error.message)); return true; }
-  if (act === 'mic') {
-    session.toggleMic().then(on => { button.classList.toggle('off', !on); }).catch(error => toast(error.message || t('guestMutedByHost')));
-    return true;
-  }
+  if (act === 'mic') { session.toggleMic().catch(error => toast(error.message || t('guestMutedByHost'))).finally(() => paintMedia(slide, session.media)); return true; }
   if (act === 'cam') {
     session.toggleCamera().then(on => {
-      button.classList.toggle('off', !on);
       if (session.host) { slide._refs.cover.hidden = on; slide.classList.toggle('has-video', on); }
-    }).catch(error => toast(error.message));
+    }).catch(error => toast(error.message)).finally(() => paintMedia(slide, session.media));
     return true;
   }
   return false;
@@ -485,7 +529,10 @@ export class LiveView {
         if (!this.hooks.requireLogin()) return;
         if (this.session && slide === this.activeSlide) this.#stageRequest(); else toast(t('joining'));
       }
-      else if (act === 'leave-stage') { this.session?.leaveStage().catch(error => toast(error.message)); }
+      else if (act === 'leave-stage') {
+        if (this.activeSlide) this.activeSlide._selfCancelled = true;
+        this.session?.leaveStage().then(() => toast(t('leftStage'))).catch(error => toast(error.message));
+      }
       else if (act === 'guest') {
         // Viewers: a guest box opens that guest's profile.
         const member = event.target.closest('.live-guest')?._member;
@@ -510,14 +557,19 @@ export class LiveView {
 
   async #stageRequest() {
     const session = this.session;
-    const self = session.self;
+    const slide = this.activeSlide;
     try {
-      if (self?.state === 'pending') { if (this.activeSlide) this.activeSlide._lastState = null; await session.leaveStage(); toast(t('requestCancelled')); return; }
-      if (self?.invited) { await session.acceptInvite(); return; }
-      const button = this.activeSlide?._refs.stageBtn;
-      if (button) button.disabled = true;
-      const state = await session.requestStage().finally(() => { if (button) button.disabled = false; });
-      toast(state === 'speaker' ? t('youAreOnStage') : t('requestSent'));
+      if (session.stage === 'requested') {
+        if (slide) slide._selfCancelled = true;
+        await session.cancelRequest();
+        toast(t('requestCancelled'));
+        return;
+      }
+      if (session.stage === 'joining' || session.stage === 'guest') return;
+      if (session.stage === 'invited') { await session.acceptInvite(); return; }
+      if (slide) slide._selfCancelled = false;
+      await session.requestStage();
+      toast(t('requestSent'));
     } catch (error) { toast(error?.message || t('liveUnavailable')); }
   }
 
@@ -554,7 +606,7 @@ export class LiveView {
       return group;
     };
     const mode = choices('gl-modes', t('goLive'), [['video', t('video')], ['audio', t('audio')]], key => key === 'video' ? icon.camera : icon.mic);
-    const guests = choices('gl-grid', t('admission'), [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]]);
+    const guests = choices('gl-grid', t('admission'), [['approval', t('admissionApproval')], ['broadcast', t('admissionOff')]]);
     const comments = choices('gl-grid', t('comments2'), [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]]);
     const group = (emoji, label, node) => h('div', { class: 'gl-group' }, h('small', { class: 'gl-label' }, h('span', { 'aria-hidden': 'true' }, emoji), label), node);
     const start = h('button', { class: 'gl-start', type: 'submit' }, h('i', { class: 'gl-dot', 'aria-hidden': 'true' }), t('goLive'));
@@ -613,6 +665,25 @@ export class LiveView {
           .then(() => { if (act === 'approve-request') toast(t('guestApproved')); })
           .catch(error => toast(error?.message || t('liveUnavailable')))
           .finally(() => { stage._approving.delete(userId); if (session.status) applyRoom(stage, session, session.status); });
+      }
+      else if (act === 'guest-mute' || act === 'guest-remove' || act === 'guest-kick') {
+        event.stopPropagation();
+        const userId = button.dataset.uid;
+        const member = button.closest('.live-guest')?._member;
+        if (!userId) return;
+        if (act === 'guest-kick' && !button.classList.contains('armed')) {
+          // Removing someone from the LIVE needs a second tap.
+          button.classList.add('armed'); button.title = t('tapAgain');
+          setTimeout(() => { button.classList.remove('armed'); button.title = t('removeFromLive'); }, 3000);
+          toast(t('tapAgain'));
+          return;
+        }
+        const action = act === 'guest-mute' ? (member?.hostMuted ? 'allow-mic' : 'mute') : act === 'guest-remove' ? 'remove' : 'kick';
+        button.disabled = true;
+        session.control(action, { target: userId })
+          .then(() => { if (act === 'guest-kick') toast(t('removed')); })
+          .catch(error => toast(error?.message || t('liveUnavailable')))
+          .finally(() => { button.disabled = false; });
       }
       else if (act === 'settings') controls.openSettings();
       else if (act === 'viewers') controls.openViewers();

@@ -88,6 +88,8 @@ export class HostControls {
     this.offs = [
       session.on('room', status => { this.#announceRequests(status); this.#rerender(); }),
       session.on('audience', () => { if (this.viewerSheet.isOpen || this.guestSheet.isOpen || this.moderationSheet.isOpen) this.#rerender(); }),
+      // A viewer's request arrived as a direct signal: bring the requests list up to date if it is open.
+      session.on('stage-request', () => this.#rerender()),
       session.on('declined', userId => {
         const person = this.#people().find(entry => entry.userId === userId);
         toast(`${person?.name || 'MilkyWay'} ${t('declined')}`);
@@ -188,7 +190,7 @@ export class HostControls {
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '+', disabled: seats >= MAX_SEATS, onclick: () => setSeats(seats + 1) }, '+')),
         seatGrid),
       section(t('admission'),
-        segmented('lcAdmission', [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]], settings.admission || 'approval',
+        segmented('lcAdmission', [['approval', t('admissionApproval')], ['broadcast', t('admissionOff')]], settings.admission === 'broadcast' ? 'broadcast' : 'approval',
           value => run(s, 'settings', { admission: value })),
         toggleRow(t('allowRequests'), settings.allowRequests !== false, value => run(s, 'settings', { allowRequests: value }))),
       section(`${t('onStage')} (${stage.length})`,
@@ -196,7 +198,8 @@ export class HostControls {
           person.hostMuted
             ? actionBtn(t('unmuteMic'), () => run(s, 'allow-mic', { target: person.userId }))
             : actionBtn(t('muteMic'), () => run(s, 'mute', { target: person.userId })),
-          confirmButton(t('removeFromStage'), () => run(s, 'remove', { target: person.userId }))))
+          actionBtn(t('removeFromStage'), () => run(s, 'remove', { target: person.userId })),
+          confirmButton(t('removeFromLive'), () => run(s, 'kick', { target: person.userId }, t('removed')))))
           : [note(t('noGuests'))])),
       section(`${t('requests')} (${requests.length})`,
         ...(requests.length ? requests.map(person => personRow(person,

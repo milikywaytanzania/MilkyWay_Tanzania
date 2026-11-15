@@ -10,7 +10,7 @@ import { livekit, livekitConfigured, CAMERA, MIC } from './_lib/livekit.js';
 //   POST /api/milkyway-live-room { room, action: 'status' | 'request' | 'approve' | ... }
 
 const ROOM = /^mw-(audio|video)-live-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const ADMISSIONS = ['approval', 'direct', 'broadcast'];
+const ADMISSIONS = ['approval', 'broadcast']; // guests only ever reach the stage through the host's approval
 const COMMENT_MODES = ['everyone', 'followers', 'off'];
 const SLOW_MODES = [0, 3, 10, 30, 60];
 const INVITE_TTL_MS = 3 * 60_000;
@@ -170,40 +170,44 @@ async function handle({ ctx, body, method }) {
   if (!room.record.is_live && action !== 'end') throw new ApiError(404, 'This Live session has ended.');
 
   // ---- Audience actions -----------------------------------------------------------------------------------
+  // Stage states: viewer (silent subscriber) → pending (asked to join) → speaker (approved by the host, may publish).
+  // Only host actions (approve, or the host's app accepting someone the host invited) ever write 'speaker'.
+  const ownRow = async () => (await ctx.rest(`${memberPath(room.roomName, ctx.user.id)}&select=state,host_muted&limit=1`) || [])[0] || null;
+
   if (action === 'request' || action === 'accept-invite') {
     if (room.host) throw new ApiError(400, 'The host is already on stage.');
     const settings = await loadSettings(ctx, room.roomName);
     if (settings.blockedIds.includes(me)) throw new ApiError(403, kickedMessage);
-    const user = await whoAmI(ctx);
-    const [existing] = await ctx.rest(`${memberPath(room.roomName, ctx.user.id)}&select=state,host_muted&limit=1`) || [];
-    if (existing?.state === 'speaker') {
-      await setPublish(room.roomName, ctx.user.id, true, room.audio, !existing.host_muted);
-      return { state: 'speaker' };
-    }
+    const existing = await ownRow();
+    if (existing?.state === 'speaker') return { state: 'speaker' };
+    if (existing?.state === 'pending') return { state: 'pending' };
     const invited = !!freshInvites(settings.invites)[me];
     if (action === 'accept-invite' && !invited) throw new ApiError(410, 'This invitation has expired.');
+    if (!invited && (settings.admission === 'broadcast' || settings.allowRequests === false)) throw new ApiError(403, 'The host is not taking guest requests right now.');
     const seated = await speakersOf(ctx, room.roomName);
     if (seated.length >= settings.layout - 1) throw new ApiError(409, 'All guest seats are full.');
-    if (invited) {
-      // The host's app approves invited guests the moment it sees them waiting (publish rights come from the host).
-      await upsertMember(ctx, room.roomName, ctx.user.id, { name: user.name, avatar: user.avatar, state: 'pending' });
-      return { state: 'pending', invited: true };
-    }
-    if (settings.admission === 'broadcast' || settings.allowRequests === false) throw new ApiError(403, 'The host is not taking guest requests right now.');
-    const direct = settings.admission === 'direct';
-    await upsertMember(ctx, room.roomName, ctx.user.id, { name: user.name, avatar: user.avatar, state: direct ? 'speaker' : 'pending' });
-    if (direct) await setPublish(room.roomName, ctx.user.id, true, room.audio).catch(async error => {
-      await upsertMember(ctx, room.roomName, ctx.user.id, { state: 'viewer' }).catch(() => {});
-      throw error;
-    });
-    return { state: direct ? 'speaker' : 'pending' };
+    const user = await whoAmI(ctx);
+    await upsertMember(ctx, room.roomName, ctx.user.id, { name: user.name, avatar: user.avatar, state: 'pending', host_muted: false });
+    return { state: 'pending', invited };
   }
 
-  if (action === 'decline-invite' || action === 'leave-stage') {
+  if (action === 'cancel-request' || action === 'decline-invite' || action === 'leave-stage') {
     if (room.host) throw new ApiError(400, 'The host cannot leave the stage.');
-    await upsertMember(ctx, room.roomName, ctx.user.id, { state: 'viewer', host_muted: false });
-    if (action === 'leave-stage') await setPublish(room.roomName, ctx.user.id, false, room.audio).catch(() => {});
+    const existing = await ownRow();
+    if (existing && existing.state !== 'viewer') await upsertMember(ctx, room.roomName, ctx.user.id, { state: 'viewer', host_muted: false });
+    // Always revoke: a guest leaving must stop publishing even if the database was already updated.
+    if (action === 'leave-stage' || existing?.state === 'speaker') await setPublish(room.roomName, ctx.user.id, false, room.audio).catch(() => {});
     return { state: 'viewer' };
+  }
+
+  if (action === 'resync') {
+    // An approved guest whose connection does not carry publish rights yet (approved while reconnecting) asks for them
+    // again. Granted only when the host's approval is on record.
+    if (room.host) return { state: 'speaker' };
+    const existing = await ownRow();
+    if (existing?.state !== 'speaker') return { state: existing?.state || 'viewer' };
+    const granted = await setPublish(room.roomName, ctx.user.id, true, room.audio, !existing.host_muted);
+    return { state: 'speaker', granted: !!granted };
   }
 
   if (action === 'message') {
@@ -229,11 +233,18 @@ async function handle({ ctx, body, method }) {
   if (action === 'approve') {
     const userId = target();
     if (settings.blockedIds.includes(userId)) throw new ApiError(409, 'Unblock this person before inviting them on stage.');
-    const speakers = await speakersOf(ctx, room.roomName);
-    if (!speakers.some(row => row.user_id === userId) && speakers.length >= settings.layout - 1) throw new ApiError(409, 'All guest seats are full. Add more guest seats in Guest settings.');
-    const [member] = await ctx.rest(`${memberPath(room.roomName, userId)}&select=user_id&limit=1`) || [];
+    const [member] = await ctx.rest(`${memberPath(room.roomName, userId)}&select=user_id,state&limit=1`) || [];
     if (!member) throw new ApiError(404, 'That person is not in this Live.');
-    await setPublish(room.roomName, userId, true, room.audio);
+    if (member.state === 'speaker') return { ok: true, state: 'speaker' };
+    if (member.state !== 'pending') throw new ApiError(409, 'This person cancelled their request.');
+    const speakers = await speakersOf(ctx, room.roomName);
+    if (speakers.length >= settings.layout - 1) throw new ApiError(409, 'All guest seats are full. Add more guest seats in Guest settings.');
+    // Upgrade the guest's live LiveKit connection to publisher. LiveKit answers "not found" when they already left.
+    const granted = await setPublish(room.roomName, userId, true, room.audio);
+    if (!granted) {
+      await ctx.rest(memberPath(room.roomName, userId), { method: 'PATCH', body: { state: 'viewer', host_muted: false, updated_at: new Date().toISOString() } }).catch(() => {});
+      throw new ApiError(409, 'This person is no longer watching.');
+    }
     await ctx.rest(memberPath(room.roomName, userId), { method: 'PATCH', body: { state: 'speaker', host_muted: false, updated_at: new Date().toISOString() } });
     const { [userId]: wasInvited, ...invites } = freshInvites(settings.invites);
     if (wasInvited) await update({ invites });
@@ -248,8 +259,12 @@ async function handle({ ctx, body, method }) {
   }
 
   if (action === 'mute' || action === 'allow-mic') {
+    // A host mute takes the microphone right away from the guest in LiveKit (their mic track is stopped by the
+    // server), so it holds even against a modified client. "Allow mic" gives the right back; the guest unmutes.
     const userId = target();
     const muted = action === 'mute';
+    const [member] = await ctx.rest(`${memberPath(room.roomName, userId)}&select=state&limit=1`) || [];
+    if (member?.state !== 'speaker') throw new ApiError(409, 'This person is not on stage.');
     await setPublish(room.roomName, userId, true, room.audio, !muted);
     await ctx.rest(memberPath(room.roomName, userId), { method: 'PATCH', body: { host_muted: muted, updated_at: new Date().toISOString() } });
     return { ok: true };

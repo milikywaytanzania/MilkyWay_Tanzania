@@ -35,7 +35,7 @@ const strings = {
     unmute: 'Unmute', unblock: 'Unblock', noneYet: 'Nobody', saveTitle: 'Save title', titleSaved: 'Title updated',
     viewProfile: 'View profile', muteComments: 'Mute comments', unmuteComments: 'Unmute comments', pinComment: 'Pin comment',
     unpinComment: 'Unpin', deleteComment: 'Delete comment', removeFromLive: 'Remove from LIVE', tapAgain: 'Tap again to confirm',
-    removed: 'Removed', removedYou: 'The host removed you from this LIVE', requestJoin: 'Request to join', requested: 'Requested · tap to cancel',
+    removed: 'Removed', removedYou: 'The host removed you from this LIVE', requestJoin: 'Request to join', requested: 'Requested (tap to cancel)',
     joinLive: 'Join LIVE', invitedYou: 'invited you to join their LIVE as a guest', leaveStage: 'Leave stage', youAreOnStage: 'You are on stage',
     commentsOffNote: 'Comments are turned off', mutedNote: 'The host muted your comments', saved: 'Saved', guestMutedByHost: 'The host muted your mic',
     requestSent: 'Request sent to the host', declined: 'declined your invite', pinned: 'Pinned', moderation: 'Moderation', streamControls: 'Stream',
@@ -47,6 +47,8 @@ const strings = {
     approve: 'Approve', reject: 'Reject', seatsFull: 'All guest seats are full', guestApproved: 'Guest is joining the stage',
     wantsToJoin: 'wants to join as a guest', newRequests: 'new guest requests', removeGuestFirst: 'Remove a guest from the stage first',
     openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite',
+    joiningStage: 'Joining the stage…', movedToAudience: 'The host moved you back to the audience', hostAllowedMic: 'The host allowed your mic again', leftStage: 'You left the stage',
+    muteMyMic: 'Mute my mic', unmuteMyMic: 'Unmute my mic', cameraOffAction: 'Turn camera off', cameraOnAction: 'Turn camera on',
     // Nova menu & settings
     menu: 'Menu', settings: 'Settings & privacy', privacy: 'Privacy', privateAccountHint: 'Only followers you approve see your posts',
     whoCanMessage: 'Who can message me', everyone: 'Everyone', followersOnly: 'Followers', nobody: 'Nobody', notifications: 'Notifications',
@@ -115,6 +117,8 @@ const strings = {
     approve: 'Kubali', reject: 'Kataa', seatsFull: 'Viti vyote vya wageni vimejaa', guestApproved: 'Mgeni anajiunga jukwaani',
     wantsToJoin: 'anaomba kujiunga kama mgeni', newRequests: 'maombi mapya ya wageni', removeGuestFirst: 'Ondoa mgeni jukwaani kwanza',
     openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika',
+    joiningStage: 'Unaingia jukwaani…', movedToAudience: 'Mwenyeji amekurudisha kwa watazamaji', hostAllowedMic: 'Mwenyeji amekuruhusu kutumia maikrofoni tena', leftStage: 'Umetoka jukwaani',
+    muteMyMic: 'Zima maikrofoni yangu', unmuteMyMic: 'Washa maikrofoni yangu', cameraOffAction: 'Zima kamera', cameraOnAction: 'Washa kamera',
     // Menyu ya Nova na mipangilio
     menu: 'Menyu', settings: 'Mipangilio na faragha', privacy: 'Faragha', privateAccountHint: 'Wafuasi unaowakubali tu ndio wanaona posts zako',
     whoCanMessage: 'Nani anaweza kunitumia ujumbe', everyone: 'Wote', followersOnly: 'Wafuasi', nobody: 'Hakuna', notifications: 'Arifa',

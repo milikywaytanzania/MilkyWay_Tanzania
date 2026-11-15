@@ -7,8 +7,15 @@
 // History: comments are persisted through /api/milkyway-live-room so late joiners see the recent conversation.
 // Viewers: counted from LiveKit participants (authoritative), Realtime presence when LiveKit is not connected.
 //
+// Stage:   every viewer enters as a silent subscriber (token canPublish:false, canPublishData:true; mic and camera are
+//          forced off). "Request to join" is stored by the server AND sent to the host as a LiveKit data packet, so it
+//          shows on the host's screen at once. Only the host's Approve upgrades the guest's LiveKit permissions (the
+//          server calls UpdateParticipant); the guest's camera and mic switch on only after LiveKit confirms them.
+//          Stage states (session.stage): 'host' | 'audience' | 'requested' | 'invited' | 'joining' | 'guest'.
+//
 // Live room signals: understands {type:'lv-heart'} / {type:'lv-sync'} signals and sends them.
 import { config } from '../config.js';
+import { t } from '../core/i18n.js';
 import { api, auth, supabase, isNetworkError, accessToken } from '../core/net.js';
 import { loadLiveKit } from '../core/sdk.js';
 import { sendGift } from '../data/gifts.js';
@@ -21,6 +28,8 @@ const HOST_POLL_MS = 4_000;   // the host watches guest requests closely
 const STAGE_POLL_MS = 5_000;  // viewers who requested, were invited or are on stage
 const HOST_GRACE_MS = 25_000;
 const tokenCache = new Map(); // room → { payload, at }
+// Host decision → the signal the affected viewer receives (they re-read the room at once).
+const HOST_SIGNALS = { approve: 'stage-approve', reject: 'stage-reject', remove: 'stage-remove', kick: 'stage-remove', mute: 'stage-mute', 'allow-mic': 'stage-unmute', invite: 'stage-invite', 'cancel-invite': 'stage-invite' };
 
 class Emitter {
   #handlers = new Map();
@@ -46,14 +55,14 @@ async function directToken(body) {
   return payload;
 }
 
-// Viewers always enter as subscribers (no camera / mic rights). Only `rejoin` — reconnecting inside the same visit,
-// e.g. after a network drop while seated on stage — lets the server sign publish rights for an approved guest.
-async function fetchToken(live, host, { direct = false, rejoin = false } = {}) {
+// Viewers always enter as subscribers (no camera / mic rights). Only `stage` — an approved guest reconnecting — asks
+// the server for a publisher token, which it signs only when the host's approval is on record.
+async function fetchToken(live, host, { direct = false, stage = false } = {}) {
   const cached = tokenCache.get(live.room);
-  if (!direct && !host && !rejoin && cached && Date.now() - cached.at < 60_000) return cached.payload;
+  if (!direct && !host && !stage && cached && Date.now() - cached.at < 60_000) return cached.payload;
   const body = {
     room: live.room, roomName: live.room, identity: auth.userId, name: auth.name, participantName: auth.name,
-    role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token', ...(rejoin && !host ? { rejoin: true } : {}),
+    role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token', ...(stage && !host ? { stage: true } : {}),
   };
   let payload;
   if (direct) payload = await directToken(body);
@@ -69,7 +78,7 @@ async function fetchToken(live, host, { direct = false, rejoin = false } = {}) {
     }
   }
   if (!payload?.token || !payload?.serverUrl || !/^wss:/i.test(payload.serverUrl)) throw new Error('Invalid LIVE token.');
-  tokenCache.set(live.room, { payload, at: Date.now() });
+  if (!stage && !host) tokenCache.set(live.room, { payload, at: Date.now() });
   return payload;
 }
 
@@ -86,22 +95,45 @@ export class LiveSession extends Emitter {
     this.viewers = 0;
     this.likeBatch = 0;
     this.status = null;      // last /live-room status: settings, self, members, messages
-    this.onStage = false;    // a guest currently publishing
+    this.onStage = false;    // a guest whose camera / mic are live right now
     this.approving = new Set();
     this.entered = false;    // true after the first connection of this visit; later joins are reconnects
+    this.stage = host ? 'host' : 'audience';
   }
 
   get settings() { return this.status?.settings || {}; }
   get self() { return this.status?.self || null; }
+  /** Whether the server has this viewer seated on stage (approved by the host). The host's own account opening its
+   *  room as a viewer is never a guest. */
+  get seated() { return !this.host && !this.self?.host && this.self?.state === 'speaker'; }
+  get canPublish() { return !!this.room?.localParticipant?.permissions?.canPublish; }
+
+  #setStage(next) {
+    if (this.stage === next) return;
+    this.stage = next;
+    this.emit('stage-state', next);
+  }
+
+  // The viewer's stage state from the server record + LiveKit rights. 'joining' = approved, rights arriving.
+  #deriveStage() {
+    if (this.host) return 'host';
+    const self = this.self;
+    if (this.seated) return this.onStage ? 'guest' : 'joining';
+    if (self?.state === 'pending') return 'requested';
+    if (self?.invited) return 'invited';
+    return 'audience';
+  }
 
   /** Connects media + event channels. Resolves when watching (or throws with a readable message). */
   async join() {
     this.emit('state', 'connecting');
     if (!this.channel) this.#openRealtime(); // in parallel; never blocks the video
     const rejoin = this.entered;
+    // A publisher token only for an approved guest reconnecting within this visit.
+    const stage = rejoin && this.seated;
     // A fresh visit clears any seat or request left over from an earlier visit, so the viewer starts as a subscriber.
     this.#loadHistory({ enter: !rejoin && !this.host });
-    const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host, { rejoin })]);
+    const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host, { stage })]);
     if (this.closed) return;
     const { Room, RoomEvent, Track } = sdk;
     const room = new Room({
@@ -117,12 +149,20 @@ export class LiveSession extends Emitter {
     room
       .on(RoomEvent.TrackSubscribed, (track, _pub, participant) => this.#attach(track, participant, Track))
       .on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => { track.detach().forEach(element => element.remove()); if (track.kind === 'video') this.emit('video-gone', participant.identity); })
-      .on(RoomEvent.LocalTrackPublished, publication => { if (publication.track?.kind === 'video') this.#attach(publication.track, room.localParticipant, Track, true); })
-      .on(RoomEvent.LocalTrackUnpublished, publication => { if (publication.kind === 'video' || publication.track?.kind === 'video') { publication.track?.detach().forEach(element => element.remove()); this.emit('video-gone', room.localParticipant.identity); } })
-      .on(RoomEvent.TrackMuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: true }))
-      .on(RoomEvent.TrackUnmuted, (publication, participant) => this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: false }))
+      .on(RoomEvent.LocalTrackPublished, publication => {
+        // Hard guard: a viewer who is not an approved guest never publishes anything, whatever called it.
+        if (!this.host && !this.onStage) { room.localParticipant.unpublishTrack(publication.track).catch(() => {}); return; }
+        if (publication.track?.kind === 'video') this.#attach(publication.track, room.localParticipant, Track, true);
+        this.#emitMedia();
+      })
+      .on(RoomEvent.LocalTrackUnpublished, publication => {
+        if (publication.kind === 'video' || publication.track?.kind === 'video') { publication.track?.detach().forEach(element => element.remove()); this.emit('video-gone', room.localParticipant.identity); }
+        this.#emitMedia();
+      })
+      .on(RoomEvent.TrackMuted, (publication, participant) => { this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: true }); if (participant?.isLocal) this.#emitMedia(); })
+      .on(RoomEvent.TrackUnmuted, (publication, participant) => { this.emit('track-muted', { participant: participant.identity, kind: publication.kind, muted: false }); if (participant?.isLocal) this.#emitMedia(); })
       .on(RoomEvent.ParticipantPermissionsChanged, (_prev, participant) => {
-        // The host just seated, muted or removed this guest: read the room now instead of waiting for the next poll.
+        // The host just approved, muted or removed this guest (LiveKit pushed the new rights): act on them now.
         if (participant === room.localParticipant || participant?.isLocal || !participant) { this.#syncStage(); this.#refreshSoon(); }
       })
       .on(RoomEvent.ParticipantConnected, participant => {
@@ -156,8 +196,8 @@ export class LiveSession extends Emitter {
       // "invalid API key": this host signed with a key LiveKit does not know, so asking it again cannot help. The
       // Supabase function signs with the LiveKit project's own secrets. An expired token just needs a fresh one.
       let fresh;
-      if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true, rejoin }); } catch {} }
-      fresh ||= await fetchToken(this.live, this.host, { rejoin });
+      if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true, stage }); } catch {} }
+      fresh ||= await fetchToken(this.live, this.host, { stage });
       if (this.closed) return;
       await room.connect(fresh.serverUrl, fresh.token, { autoSubscribe: true });
     }
@@ -170,6 +210,11 @@ export class LiveSession extends Emitter {
     }
     room.startAudio?.().catch(() => this.emit('audio-blocked', true));
     if (this.host) await this.#publish();
+    else {
+      // Zero auto-publishing: the viewer's microphone and camera are off on entry, always.
+      await this.#enforceAudience();
+      await this.#syncStage(); // an approved guest reconnecting goes straight back on stage
+    }
     this.#schedulePoll();
     this.flushLikes = setInterval(() => this.#sendLikes(), 500);
   }
@@ -182,14 +227,20 @@ export class LiveSession extends Emitter {
     try { old?.removeAllListeners?.(); await old?.disconnect(); } catch {}
     if (this.closed) return;
     this.onStage = false;
+    this.rightsWaitSince = 0;
     tokenCache.delete(this.live.room);
     return this.join();
   }
 
   async leave() {
     this.closed = true;
-    clearTimeout(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer); clearTimeout(this.nudgeTimer);
+    clearTimeout(this.poll); clearInterval(this.flushLikes); clearTimeout(this.hostTimer); clearTimeout(this.nudgeTimer); clearTimeout(this.rightsTimer);
     this.#sendLikes();
+    // Leaving while seated or waiting frees the seat / request right away (the next visit would clear it anyway).
+    if (!this.host && ['pending', 'speaker'].includes(this.self?.state)) {
+      api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: this.self.state === 'speaker' ? 'leave-stage' : 'cancel-request' } }).catch(() => {});
+      this.#signal(this.self.state === 'speaker' ? 'stage-left' : 'stage-cancel', { to: this.live.host.id });
+    }
     try { await this.room?.disconnect(); } catch {}
     try { if (this.channel) (await supabase()).removeChannel(this.channel); } catch {}
     this.room = null; this.channel = null;
@@ -230,31 +281,41 @@ export class LiveSession extends Emitter {
   }
 
   // ---- Stream controls (host, and guests on stage) ---------------------------------------------------------
+  // Only the host or an approved guest whose LiveKit rights arrived can touch their camera / mic.
+  #mayPublish() { return this.host || (this.onStage && this.seated); }
+
   async flipCamera() {
-    const track = this.room?.localParticipant.getTrackPublication(this.sdk.Track.Source.Camera)?.track;
-    if (!track) return;
+    if (!this.#mayPublish() || this.mode !== 'video') return;
     this.facing = this.facing === 'environment' ? 'user' : 'environment';
-    await track.restartTrack({ facingMode: this.facing });
+    const track = this.room?.localParticipant.getTrackPublication(this.sdk.Track.Source.Camera)?.track;
+    if (track) await track.restartTrack({ facingMode: this.facing });
     this.emit('facing', this.facing);
   }
   async toggleMic() {
     const lp = this.room?.localParticipant;
-    if (!lp) return true;
-    if (!this.host && this.self?.hostMuted) throw new Error('The host muted your microphone.');
+    if (!lp || !this.#mayPublish()) return false;
     const next = !lp.isMicrophoneEnabled;
+    if (next && !this.host && this.self?.hostMuted) throw new Error(t('guestMutedByHost'));
     await lp.setMicrophoneEnabled(next);
+    this.#emitMedia();
     return next;
   }
   async toggleCamera() {
     const lp = this.room?.localParticipant;
-    if (!lp || this.mode !== 'video') return false;
+    if (!lp || this.mode !== 'video' || !this.#mayPublish()) return false;
     const next = !lp.isCameraEnabled;
     await lp.setCameraEnabled(next, { facingMode: this.facing || 'user' });
     this.#broadcast({ t: 'cam', id: crypto.randomUUID(), uid: auth.userId, on: next }, true);
+    this.#emitMedia();
     return next;
   }
   get micOn() { return !!this.room?.localParticipant?.isMicrophoneEnabled; }
   get cameraOn() { return !!this.room?.localParticipant?.isCameraEnabled; }
+  /** Current own media state for the control buttons. */
+  get media() {
+    return { mic: this.micOn, camera: this.cameraOn, hostMuted: !this.host && !!this.self?.hostMuted, onStage: this.host || this.onStage };
+  }
+  #emitMedia() { this.emit('media', this.media); }
 
   /** Everyone connected to the LiveKit room right now (identity + name), excluding the host. */
   audience() {
@@ -264,25 +325,61 @@ export class LiveSession extends Emitter {
       .map(participant => ({ userId: participant.identity, name: participant.name || '' }));
   }
 
-  /** Host moderation / guest action through the server, then everyone refreshes. */
+  /** Host moderation / guest action through the server, then everyone concerned refreshes. */
   async control(action, extra = {}, { quiet = false } = {}) {
     const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action, ...extra } });
     if (result?.settings && this.status) this.status = { ...this.status, settings: result.settings };
-    // A viewer's stage change only concerns the host. A host decision about one person (approve, reject, mute…)
-    // tells that person to re-read the room at once, so an approved guest goes live on stage without waiting.
-    this.#nudge(this.host ? '' : 'host', this.host && typeof extra.target === 'string' ? extra.target : '');
+    const target = typeof extra.target === 'string' ? extra.target : '';
+    if (this.host && target) {
+      this.#signal(HOST_SIGNALS[action] || 'room', { to: target });
+      this.#nudge('', target); // everyone else refreshes the stage grid
+    } else this.#nudge(this.host ? '' : 'host');
     if (!quiet) await this.refresh();
     return result;
   }
 
   // ---- Guest actions (viewers) ----------------------------------------------------------------------------
-  async requestStage() { const result = await this.control('request'); return result?.state; }
-  async acceptInvite() { const result = await this.control('accept-invite'); return result?.state; }
+  /** Request to join: stored by the server, then signalled straight to the host's screen. */
+  async requestStage() {
+    this.#setStage('requested'); // instant feedback; corrected by the server answer below
+    try {
+      const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'request' } });
+      this.#signal('stage-request', { to: this.live.host.id, name: auth.name });
+      await this.refresh();
+      return result?.state;
+    } catch (error) {
+      this.#setStage(this.#deriveStage());
+      throw error;
+    }
+  }
+  /** Tap on "Requested": withdraws the request. */
+  async cancelRequest() {
+    this.#setStage('audience');
+    try {
+      await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'cancel-request' } });
+      this.#signal('stage-cancel', { to: this.live.host.id });
+    } finally { await this.refresh(); }
+  }
+  async acceptInvite() {
+    this.#setStage('requested');
+    try {
+      const result = await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'accept-invite' } });
+      this.#signal('stage-request', { to: this.live.host.id, name: auth.name, invited: true });
+      await this.refresh();
+      return result?.state;
+    } catch (error) { this.#setStage(this.#deriveStage()); throw error; }
+  }
   async declineInvite() {
     await this.control('decline-invite');
     this.#broadcast({ t: 'decline', id: crypto.randomUUID(), uid: auth.userId }, true);
   }
-  async leaveStage() { await this.control('leave-stage'); await this.#syncStage(); }
+  /** Guest steps down: camera and mic stop immediately, then the server revokes the rights. */
+  async leaveStage() {
+    await this.#stopPublishing();
+    await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'leave-stage' } });
+    this.#signal('stage-left', { to: this.live.host.id });
+    await this.refresh();
+  }
 
   async end() {
     try { await api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'end' } }); } catch {}
@@ -310,49 +407,79 @@ export class LiveSession extends Emitter {
     api('/api/milkyway-notifications?action=live-started', { method: 'POST', body: { room: this.live.room } }).catch(() => {});
   }
 
-  // Publishes or unpublishes the guest's camera/mic to match their seat on stage.
+  // Viewer entry: microphone and camera off, nothing published.
+  async #enforceAudience() {
+    const lp = this.room?.localParticipant;
+    if (!lp) return;
+    await lp.setMicrophoneEnabled(false).catch(() => {});
+    await lp.setCameraEnabled(false).catch(() => {});
+    for (const publication of lp.trackPublications?.values?.() || []) {
+      if (publication.track) await lp.unpublishTrack(publication.track).catch(() => {});
+    }
+    this.#emitMedia();
+  }
+
+  async #stopPublishing() {
+    const wasOnStage = this.onStage;
+    this.onStage = false;
+    await this.#enforceAudience();
+    if (wasOnStage) this.emit('stage', { onStage: false });
+  }
+
+  // Matches the guest's camera / mic to the server record (seated or not) and the LiveKit rights it holds.
   async #syncStage() {
-    if (this.host || !this.room || this.closed) return;
-    const self = this.self;
-    const lp = this.room.localParticipant;
-    const seated = self?.state === 'speaker';
+    if (this.host || !this.room || this.closed || this.room.state !== 'connected') return;
+    if (this.syncing) { this.syncAgain = true; return; }
+    this.syncing = true;
     try {
-      if (seated && lp.permissions?.canPublish === false) {
-        // Seated on the server but LiveKit has no publish rights for this connection (e.g. approved while
-        // reconnecting): ask the server to grant them again, at most every 8 s.
-        if (Date.now() - (this.regrantAt || 0) > 8000) {
-          this.regrantAt = Date.now();
-          this.regrantTries = (this.regrantTries || 0) + 1;
-          // Still a subscriber after two re-grants: rejoin once with a fresh token, which the server signs with
-          // camera + microphone rights for seated guests, so the upgrade to publisher always happens.
-          if (this.regrantTries > 2 && !this.stageRejoined) {
-            this.stageRejoined = true;
-            setTimeout(() => { if (!this.closed) this.reconnect().catch(error => this.emit('error', error)); }, 0);
-            return;
-          }
-          api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'request' } }).catch(() => {});
-        }
+      const self = this.self;
+      const lp = this.room.localParticipant;
+      if (!this.seated) {
+        clearTimeout(this.rightsTimer); this.rightsWaitSince = 0;
+        if (this.onStage || lp.isMicrophoneEnabled || lp.isCameraEnabled) await this.#stopPublishing();
         return;
       }
-      if (seated) this.regrantTries = 0;
-      if (seated) {
-        if (!this.onStage) {
-          this.onStage = true;
+      // An audio LIVE guest muted by the host holds no publish right at all; that is expected, not "waiting".
+      const expectRights = !(this.mode === 'audio' && self.hostMuted);
+      if (expectRights && !this.canPublish) { this.#awaitRights(); return; }
+      clearTimeout(this.rightsTimer); this.rightsWaitSince = 0; this.stageRejoined = false;
+      if (!this.onStage) {
+        // Promoted: the host approved and LiveKit granted the rights. Camera and mic go live now.
+        this.onStage = true;
+        try {
           if (this.mode === 'video') await lp.setCameraEnabled(true, { facingMode: this.facing || 'user' });
           if (!self.hostMuted) await lp.setMicrophoneEnabled(true);
-          this.emit('stage', { onStage: true });
+        } catch (error) {
+          if (error?.name === 'NotAllowedError') this.emit('error', Object.assign(new Error(t('cameraNeeded')), { status: 0 }));
         }
-        if (self.hostMuted && lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(false);
-      } else if (!seated && this.onStage) {
-        this.onStage = false;
-        await lp.setCameraEnabled(false).catch(() => {});
-        await lp.setMicrophoneEnabled(false).catch(() => {});
-        this.emit('stage', { onStage: false });
+        this.emit('stage', { onStage: true });
       }
-    } catch (error) {
-      this.onStage = false; // permission not granted yet; the next refresh retries
-      if (error?.name === 'NotAllowedError') this.emit('error', Object.assign(new Error('Camera and microphone are needed to join as a guest.'), { status: 0 }));
+      if (self.hostMuted && lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(false).catch(() => {});
+      this.#emitMedia();
+    } finally {
+      this.syncing = false;
+      this.#setStage(this.#deriveStage());
+      if (this.syncAgain) { this.syncAgain = false; setTimeout(() => this.#syncStage(), 0); }
     }
+  }
+
+  // Approved but this connection has no publish rights yet. LiveKit usually pushes them within a second; otherwise ask
+  // the server to apply them again, and as a last resort reconnect with a fresh publisher token.
+  #awaitRights() {
+    const now = Date.now();
+    if (!this.rightsWaitSince) this.rightsWaitSince = now;
+    const waited = now - this.rightsWaitSince;
+    clearTimeout(this.rightsTimer);
+    if (waited > 9000 && !this.stageRejoined) {
+      this.stageRejoined = true;
+      setTimeout(() => { if (!this.closed) this.reconnect().catch(error => this.emit('error', error)); }, 0);
+      return;
+    }
+    if (waited > 2500 && now - (this.resyncAt || 0) > 3000) {
+      this.resyncAt = now;
+      api(config.api.liveRoom, { method: 'POST', body: { room: this.live.room, action: 'resync' } }).catch(() => {});
+    }
+    this.rightsTimer = setTimeout(() => this.#syncStage(), 1000);
   }
 
   #schedulePoll() {
@@ -366,6 +493,30 @@ export class LiveSession extends Emitter {
   }
 
   // Tells everyone in the room that the room state changed, so they refresh now instead of at the next poll.
+  // A stage signal for one person: a LiveKit data packet addressed only to them (authenticated by LiveKit), with the
+  // Realtime channel as fallback. Signals only make the receiver re-read the room; the server state is the authority.
+  #signal(kind, { to, ...extra }) {
+    if (!to) return;
+    const event = { t: 'sig', id: crypto.randomUUID(), uid: auth.userId, kind, to, ...extra };
+    try { this.room?.localParticipant.publishData(encoder.encode(JSON.stringify(event)), { reliable: true, topic: TOPIC, destinationIdentities: [to] }).catch(() => {}); } catch {}
+    try { this.channel?.send({ type: 'broadcast', event: TOPIC, payload: event }); } catch {}
+  }
+
+  #onSignal(event) {
+    if (event.to !== auth.userId) return;
+    if (this.host) {
+      // A viewer asked to join, cancelled or left the stage: show it on the host's screen right now.
+      if (['stage-request', 'stage-cancel', 'stage-left'].includes(event.kind)) {
+        clearTimeout(this.nudgeTimer);
+        this.#loadHistory();
+        if (event.kind === 'stage-request') this.emit('stage-request', { userId: event.uid, name: event.name || '' });
+      }
+      return;
+    }
+    if (event.uid !== this.live.host.id) return;
+    this.#refreshSoon();
+  }
+
   #nudge(to = '', target = '') { this.#broadcast({ t: 'room', id: crypto.randomUUID(), uid: auth.userId, to, ...(target ? { target } : {}) }, true); }
 
   #refreshSoon() {
@@ -482,6 +633,7 @@ export class LiveSession extends Emitter {
       if (!this.host && event.target && event.target === auth.userId && event.uid === this.live.host.id) this.#refreshSoon();
       else if (!event.to || (event.to === 'host' && this.host)) this.#onNudge();
     }
+    else if (event.t === 'sig') this.#onSignal(event);
     else if (event.t === 'cam') this.emit('camera', { participant: event.uid, on: !!event.on });
     else if (event.t === 'decline' && this.host && event.uid) this.control('cancel-invite', { target: event.uid }, { quiet: true }).then(() => this.emit('declined', event.uid)).catch(() => {});
   }
@@ -501,7 +653,8 @@ export class LiveSession extends Emitter {
         if (message.kind !== 'chat' || this.seen.has(message.id)) continue;
         this.#deliver({ t: 'chat', id: message.id, uid: message.userId, name: message.name, body: message.body, at: Date.parse(message.createdAt), history: true });
       }
-      if (!this.host && status.self?.invited && !before?.self?.invited) this.emit('invited');
+      if (!this.host && status.self?.invited && !before?.self?.invited && status.self?.state === 'viewer') this.emit('invited');
+      if (!this.host) this.#setStage(this.#deriveStage());
       this.emit('room', status);
       this.#autoApprove(status);
       await this.#syncStage();

@@ -260,6 +260,16 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-tools .icon-btn { background: rgba(0,0,0,.38); }
 .live-tools .icon-btn.off { color: #ff6b8b; }
 .live-tools .icon-btn.leave { color: #ff6b8b; }
+.live-tools .icon-btn.locked { color: #ff6b8b; opacity: .7; box-shadow: inset 0 0 0 1.5px rgba(255,107,139,.6); }
+/* Host-only controls on each guest box: mute / allow mic, back to audience, remove from LIVE. */
+.live-guest-tools { position: absolute; z-index: 2; top: 4px; left: 4px; display: flex; gap: 4px; }
+.live-guest-btn { width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; cursor: pointer;
+  background: rgba(0,0,0,.6); color: #fff; }
+.live-guest-btn svg { width: 14px; height: 14px; fill: currentColor; }
+.live-guest-btn.off, .live-guest-btn.danger { color: #ff6b8b; }
+.live-guest-btn.armed { background: #ff3b5c; color: #fff; }
+.live-guest-btn:disabled { opacity: .5; }
+.live-guest:has(.live-guest-tools) .live-guest-mic { top: auto; bottom: 22px; }
 .host-stage .live-hearts, .live-slide.on-stage .live-hearts { right: 64px; }
 .host-stage .live-guests, .live-slide.on-stage .live-guests { right: 60px; }
 .audio-live.host-stage .live-guests, .audio-live.on-stage .live-guests { right: 60px; }
