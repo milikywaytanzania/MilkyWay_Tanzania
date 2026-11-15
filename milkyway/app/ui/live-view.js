@@ -445,38 +445,43 @@ export class LiveView {
     this.goSheet.open();
   }
 
-  // Compact, TikTok-style setup card: avatar + title on one line, Video/Audio tabs, two tap-to-change chips, one big button.
+  // Compact, TikTok-style setup card: avatar + slim title, Video/Audio toggle pills side by side, guest and comment
+  // options as small grid chips, and one slim gradient Start button. No tall form, no spacers.
   #buildGoLiveSheet() {
     const sheet = new Sheet({ title: t('goLive'), className: 'go-live-sheet' });
+    sheet.panel.setAttribute('aria-label', t('goLive'));
     const me = { id: auth.userId, name: auth.name, avatar: profiles.peek(auth.userId)?.avatar || '' };
     const title = h('input', { class: 'gl-title', type: 'text', maxlength: '80', placeholder: t('liveTitle'), 'aria-label': t('liveTitle'), enterkeyhint: 'go' });
-    let mode = 'video';
-    const tabs = ['video', 'audio'].map(value => h('button', {
-      class: `gl-tab${value === mode ? ' on' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(value === mode),
-      onclick: () => { mode = value; tabs.forEach(tab => { const on = tab.dataset.mode === mode; tab.classList.toggle('on', on); tab.setAttribute('aria-selected', String(on)); }); },
-      'data-mode': value,
-    }, h('span', { html: value === 'video' ? icon.camera : icon.mic, 'aria-hidden': 'true' }), value === 'video' ? t('video') : t('audio')));
-    // Each chip cycles through its choices on tap.
-    const chip = (emoji, label, options) => {
-      let at = 0;
-      const value = h('b', {}, options[0][1]);
-      const node = h('button', { class: 'gl-chip', type: 'button', 'aria-label': label, onclick: () => {
-        at = (at + 1) % options.length; value.textContent = options[at][1]; node.dataset.value = options[at][0];
-      } }, h('span', { class: 'gl-chip-icon', 'aria-hidden': 'true' }, emoji), h('span', { class: 'gl-chip-text' }, h('small', {}, label), value));
-      node.dataset.value = options[0][0];
-      return node;
+    // A row of small single-choice pills/chips; returns the group with a .value getter.
+    const choices = (className, label, options, iconFor) => {
+      let value = options[0][0];
+      const buttons = options.map(([key, text]) => h('button', {
+        class: 'gl-chip', type: 'button', role: 'radio', 'data-value': key,
+        onclick: () => { value = key; paint(); },
+      }, iconFor ? h('span', { html: iconFor(key), 'aria-hidden': 'true' }) : null, text));
+      const paint = () => buttons.forEach(button => {
+        const on = button.dataset.value === value;
+        button.classList.toggle('on', on);
+        button.setAttribute('aria-checked', String(on));
+      });
+      paint();
+      const group = h('div', { class: className, role: 'radiogroup', 'aria-label': label }, ...buttons);
+      Object.defineProperty(group, 'value', { get: () => value });
+      return group;
     };
-    const guests = chip('👥', t('admission'), [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]]);
-    const comments = chip('💬', t('comments2'), [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]]);
+    const mode = choices('gl-modes', t('goLive'), [['video', t('video')], ['audio', t('audio')]], key => key === 'video' ? icon.camera : icon.mic);
+    const guests = choices('gl-grid', t('admission'), [['approval', t('admissionApproval')], ['direct', t('admissionDirect')], ['broadcast', t('admissionOff')]]);
+    const comments = choices('gl-grid', t('comments2'), [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]]);
+    const group = (emoji, label, node) => h('div', { class: 'gl-group' }, h('small', { class: 'gl-label' }, h('span', { 'aria-hidden': 'true' }, emoji), label), node);
     const start = h('button', { class: 'gl-start', type: 'submit' }, h('i', { class: 'gl-dot', 'aria-hidden': 'true' }), t('goLive'));
     sheet.body.append(h('form', { class: 'gl-form', onsubmit: event => {
       event.preventDefault();
       sheet.close();
-      this.#broadcast(title.value.trim(), mode, { admission: guests.dataset.value, comments: comments.dataset.value });
+      this.#broadcast(title.value.trim(), mode.value, { admission: guests.value, comments: comments.value });
     } },
-    h('div', { class: 'gl-head' }, avatar(me, 44), title),
-    h('div', { class: 'gl-tabs', role: 'tablist' }, ...tabs),
-    h('div', { class: 'gl-chips' }, guests, comments),
+    h('div', { class: 'gl-head' }, avatar(me, 36), title, mode),
+    group('👥', t('admission'), guests),
+    group('💬', t('comments2'), comments),
     start));
     return sheet;
   }

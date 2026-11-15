@@ -9,7 +9,7 @@ import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, toast } from './dom.js';
 import { PostViewer, postKind } from './post-viewer.js';
 import { presence } from '../data/presence.js';
-import { isOwnerAccount, ownerVerified } from './admin-view.js';
+import { isOwnerAccount } from './admin-view.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
 
@@ -123,14 +123,13 @@ export class ProfileView {
         h('button', { class: 'pill-btn', type: 'button', onclick: () => this.#edit(profile) }, t('editProfile')),
         h('button', { class: 'pill-btn hot', type: 'button', onclick: () => { this.sheet.close(); this.hooks.openCreate(); } }, t('create')),
         h('button', { class: 'pill-btn nova-menu-btn', type: 'button', 'aria-label': t('menu'), onclick: () => this.hooks.openMenu?.(profile) }, h('span', { html: icon.gear }), t('menu')));
-      // Owner-only Admin button (the server confirms the owner account before it is shown, and again on every action).
-      if (isOwnerAccount()) ownerVerified().then(ok => {
-        if (!ok || actionsRow.querySelector('.nova-admin-btn')) return;
+      // Owner-only gold Admin button (shown at once for the owner email; the server checks again on every action).
+      if (isOwnerAccount() && !actionsRow.querySelector('.nova-admin-btn')) {
         actionsRow.append(h('button', { class: 'pill-btn nova-admin-btn', type: 'button', onclick: () => {
           this.sheet.close();
           import('./admin-view.js').then(m => (ProfileView.admin ||= new m.AdminView()).open());
         } }, '🛡 Admin'));
-      });
+      }
     } else if (auth.signedIn()) {
       const button = h('button', { class: 'pill-btn hot', type: 'button' });
       const paint = () => { const on = profiles.isFollowing(profile.id); button.textContent = on ? t('following') : t('follow'); button.classList.toggle('hot', !on); button.setAttribute('aria-pressed', String(on)); };

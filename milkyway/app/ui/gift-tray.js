@@ -21,7 +21,10 @@ export class GiftTray {
   }
 
   /** target: { postId } or { room, session } */
-  open(target) {
+  async open(target) {
+    // Gift coins need the member's wallet details (phone number, account name) first.
+    const ready = await import('./wallet-onboarding.js').then(m => m.ensureWalletProfile()).catch(() => false);
+    if (!ready) return;
     this.target = target;
     this.sheet.title = `${t('gift')} → ${target.to?.name || ''}`;
     catalog.load(); wallet.load(); wallet.refresh();

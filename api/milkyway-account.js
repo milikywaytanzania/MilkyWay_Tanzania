@@ -46,6 +46,29 @@ const savePrivate = (ctx, values) => ctx.rest('mw_account_private?on_conflict=us
   method: 'POST', prefer: 'resolution=merge-duplicates', body: { user_id: ctx.user.id, ...values, updated_at: new Date().toISOString() },
 });
 
+// Validates and saves the member's phone number (private table, plus account metadata as a fallback).
+async function savePhone(ctx, phone) {
+  const digits = phone.replace(/\D/g, '');
+  if (!/^\+?[\d\s().-]{6,24}$/.test(phone) || digits.length < 8 || digits.length > 15) throw new ApiError(400, 'Enter a valid phone number.');
+  try { await savePrivate(ctx, { phone, phone_digits: digits }); }
+  catch (error) {
+    if (error instanceof ApiError && error.status === 409) throw new ApiError(409, 'This number is already linked to another account.');
+    if (!isMissingSchema(error)) throw error;
+  }
+  // Also kept on the account, so it shows up even before the private-details table exists.
+  await updateUserMetadata(ctx, { mw_phone: phone }).catch(() => {});
+  return phone;
+}
+
+async function walletProfile(ctx) {
+  const meta = ctx.user.user_metadata || {};
+  let phone = '';
+  try { phone = (await privateRow(ctx, 'phone'))?.phone || ''; } catch (error) { if (!isMissingSchema(error)) throw error; }
+  phone ||= String(meta.mw_phone || '');
+  const accountName = String(meta.mw_wallet_name || '').trim();
+  return { phone, accountName, complete: Boolean(phone && accountName) };
+}
+
 // ---------- details ----------
 function validDetails(source) {
   const birthDate = String(source?.birthDate ?? source?.mw_birth_date ?? '');
@@ -214,16 +237,20 @@ export default route({
     needPost(method);
     const phone = text(body.phone, 24);
     if (!phone) { await savePrivate(ctx, { phone: null, phone_digits: null }).catch(error => { if (!isMissingSchema(error)) throw error; }); await updateUserMetadata(ctx, { mw_phone: '' }).catch(() => {}); return { phone: '' }; }
-    const digits = phone.replace(/\D/g, '');
-    if (!/^\+?[\d\s().-]{6,24}$/.test(phone) || digits.length < 8 || digits.length > 15) throw new ApiError(400, 'Enter a valid phone number.');
-    try { await savePrivate(ctx, { phone, phone_digits: digits }); }
-    catch (error) {
-      if (error instanceof ApiError && error.status === 409) throw new ApiError(409, 'This number is already linked to another account.');
-      if (!isMissingSchema(error)) throw error;
-    }
-    // Also kept on the account, so it shows up even before the private-details table exists.
-    await updateUserMetadata(ctx, { mw_phone: phone }).catch(() => {});
-    return { phone };
+    return { phone: await savePhone(ctx, phone) };
+  },
+
+  // Wallet onboarding: the phone number and account name every member fills in before using coins and gifts.
+  'wallet-profile': async ({ ctx, method, body }) => {
+    if (method === 'GET') return walletProfile(ctx);
+    needPost(method);
+    const accountName = text(body.accountName, 80).replace(/\s+/g, ' ');
+    if (accountName.length < 2) throw new ApiError(400, 'Enter the account name.');
+    const phone = text(body.phone, 24);
+    if (!phone) throw new ApiError(400, 'Enter a valid phone number.');
+    const saved = await savePhone(ctx, phone);
+    await updateUserMetadata(ctx, { mw_wallet_name: accountName, mw_wallet_ready_at: new Date().toISOString() });
+    return { phone: saved, accountName, complete: true };
   },
 
   'phone-lookup': async ({ ctx, query }) => {

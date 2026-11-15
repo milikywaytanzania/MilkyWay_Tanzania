@@ -10,10 +10,11 @@ import { h, avatar, count, ago, toast } from './dom.js';
 const ACCOUNT = `${config.api.base}/milkyway-account`;
 export const OWNER_EMAIL = 'masiyatunda@gmail.com';
 
-/** True only for the confirmed owner account. The server confirms it again for every admin request. */
+/** True for the owner's account (by email), so the Admin button shows at once. The server checks the confirmed
+ *  owner account again for every admin request. */
 export const isOwnerAccount = () => {
   const user = auth.user;
-  return Boolean(user?.id && user.email_confirmed_at && String(user.email || '').trim().toLowerCase() === OWNER_EMAIL);
+  return Boolean(user?.id && String(user.email || '').trim().toLowerCase() === OWNER_EMAIL);
 };
 
 let verified = null; // user id → Promise<boolean>

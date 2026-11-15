@@ -11,6 +11,8 @@ import { isOwnerAccount, ownerVerified } from './admin-view.js';
 
 let adminView = null;
 const openAdmin = () => (adminView ||= import('./admin-view.js').then(m => new m.AdminView())).then(view => view.open());
+// Members fill in their wallet details (phone number, account name) before the wallet opens.
+const walletReady = () => import('./wallet-onboarding.js').then(m => m.ensureWalletProfile()).catch(() => false);
 
 const ACCOUNT = `${config.api.base}/milkyway-account`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -70,13 +72,17 @@ export class NovaMenu {
     const person = { id: auth.userId, name: this.profile?.name || auth.name, avatar: this.profile?.avatar || '' };
     this.onlineBadge = h('span', {});
     this.activeLine = h('small', { class: 'muted' });
-    const coins = row('🪙', t('giftBalance'), { detail: '…', onclick: () => this.#wallet() });
+    const coins = row('🪙', t('giftBalance'), { detail: '…', onclick: async () => { if (await walletReady()) this.#wallet(); } });
     const languageName = languages.find(item => item.code === lang)?.name || 'English';
-    // Gold Admin button: only for the app owner's account, confirmed by the server before it appears.
-    const adminSlot = h('div', {});
-    if (isOwnerAccount()) ownerVerified().then(ok => {
-      if (ok) adminSlot.replaceChildren(h('button', { class: 'pill-btn wide nova-admin-btn', type: 'button', onclick: () => { this.sheet.close(); openAdmin(); } }, '🛡 Admin'));
-    });
+    // Gold Admin dashboard button: shown straight away for the owner's account (masiyatunda@gmail.com). Every admin
+    // action is checked again on the server, so this only decides what the owner sees.
+    const adminSlot = isOwnerAccount()
+      ? h('button', { class: 'nova-admin-btn nova-admin-card', type: 'button', onclick: () => { this.sheet.close(); openAdmin(); } },
+        h('span', { class: 'nova-admin-icon', 'aria-hidden': 'true' }, '🛡'),
+        h('span', { class: 'nova-admin-text' }, h('b', {}, 'Admin dashboard'), h('small', {}, 'Users · Posts · LIVE')),
+        h('span', { class: 'nova-admin-go', html: chevron }))
+      : null;
+    if (adminSlot) ownerVerified();
     this.content.replaceChildren(
       h('div', { class: 'nova-card' },
         h('span', { class: 'presence-avatar online-self' }, avatar(person, 56), h('i', { class: 'presence-dot', 'aria-hidden': 'true' })),
