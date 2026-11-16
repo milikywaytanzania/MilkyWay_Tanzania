@@ -2,6 +2,7 @@
 // supabase/migrations/20261105_milkyway_api_wallet.sql as the signed-in user; the database enforces all money rules.
 import { ApiError, route, requireUuid, isMissingSchema } from './_lib/supa.js';
 import { loadLiveSettings } from './_lib/live-policy.js';
+import { GOOGLE_PLAY_COIN_PACKAGES } from '../supabase/functions/_shared/google-play-products.js';
 
 const NETWORKS = ['mpesa', 'mixx', 'airtel', 'halopesa'];
 const TOPUP_PACKAGES = [100, 500, 1000, 5000, 10000];
@@ -85,6 +86,11 @@ export default route({
       const detected = detectCountry(request);
       return { ...info, topupPackages: TOPUP_PACKAGES, networks: NETWORKS, pricing: pricingFor(detected, Boolean(detected)) };
     },
+  },
+
+  'play-products': {
+    auth: false,
+    run: async () => ({ products: GOOGLE_PLAY_COIN_PACKAGES }),
   },
 
   wallet: async ({ ctx, request }) => {

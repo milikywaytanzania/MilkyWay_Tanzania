@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { t, lang, languages, setLanguage } from '../core/i18n.js';
 import { api, auth, supabase } from '../core/net.js';
 import { presence } from '../data/presence.js';
-import { catalog } from '../data/gifts.js';
+import { catalog, wallet } from '../data/gifts.js';
 import { Sheet } from './sheet.js';
 import { h, icon, avatar, count, ago, toast } from './dom.js';
 import { isOwnerAccount, ownerVerified } from './admin-view.js';
@@ -16,7 +16,19 @@ const walletReady = () => import('./wallet-onboarding.js').then(m => m.ensureWal
 
 const ACCOUNT = `${config.api.base}/milkyway-account`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PLAY_PRODUCTS = `${config.api.wallet}?action=play-products`;
 const chevron = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.6 4.6 1.4-1.4 8.8 8.8-8.8 8.8-1.4-1.4L16 12z"/></svg>';
+
+function googlePlayBilling() {
+  const capacitor = globalThis.Capacitor;
+  if (capacitor?.getPlatform?.() !== 'android') return null;
+  return capacitor.Plugins?.NativePurchases || capacitor.registerPlugin?.('NativePurchases') || null;
+}
+
+async function purchaseAccountToken() {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(auth.userId));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function toggle(label, checked, onchange, hint = '') {
   const input = h('input', { type: 'checkbox', class: 'lc-switch', role: 'switch' });
@@ -32,6 +44,128 @@ function row(emoji, label, { detail = '', onclick } = {}) {
 }
 const status = () => h('p', { class: 'muted center', role: 'status' });
 const fail = (node, error) => { node.textContent = error?.message || t('retry'); };
+
+async function renderPlayCoinPackages(container, balance, note) {
+  const billing = googlePlayBilling();
+  if (!billing) return;
+  container.hidden = false;
+  container.replaceChildren(h('p', { class: 'nova-section' }, t('topUp')));
+  const options = h('div', { class: 'play-topup-list' });
+  container.append(options);
+
+  try {
+    const [available, support] = await Promise.all([
+      api(PLAY_PRODUCTS, { authed: false, timeout: 12000 }),
+      billing.isBillingSupported(),
+    ]);
+    if (!support?.isBillingSupported) throw new Error('Google Play Billing is unavailable on this device.');
+    const packs = Array.isArray(available?.products) ? available.products : [];
+    if (!packs.length) throw new Error('Coin packages are not configured for Google Play.');
+    const { products = [] } = await billing.getProducts({
+      productIdentifiers: packs.map(pack => pack.productId),
+      productType: 'inapp',
+    });
+    const byId = new Map(products.map(product => [product.identifier, product]));
+    const visiblePacks = packs.filter(pack => byId.has(pack.productId));
+    if (!visiblePacks.length) throw new Error('Coin packages are not available in Google Play yet.');
+
+    const updateBalance = result => {
+      const coins = Number(result?.coins) || 0;
+      balance.textContent = count(coins);
+      wallet.mutate({ coins });
+    };
+    const verifyPurchase = async (productId, purchaseToken) => {
+      const client = await supabase();
+      const { data: result, error } = await client.functions.invoke('google-play-verify', {
+        body: { productId, purchaseToken },
+      });
+      if (error) {
+        let message = error.message || t('retry');
+        if (error.context instanceof Response) {
+          const details = await error.context.json().catch(() => null);
+          if (details?.error) message = details.error;
+        }
+        throw new Error(message);
+      }
+      updateBalance(result);
+      if (Number(result?.added) > 0) note.textContent = `+${count(Number(result.added))} ${t('coins')}`;
+      else note.textContent = `${t('balance')}: ${count(Number(result?.coins) || 0)} ${t('coins')}`;
+      return result;
+    };
+
+    for (const pack of visiblePacks) {
+      const product = byId.get(pack.productId);
+      const button = h('button', {
+        class: 'play-topup-option',
+        type: 'button',
+        onclick: async () => {
+          if (button.disabled) return;
+          button.disabled = true;
+          note.textContent = t('loading');
+          let transaction = null;
+          try {
+            const appAccountToken = await purchaseAccountToken();
+            transaction = await billing.purchaseProduct({
+              productIdentifier: pack.productId,
+              productType: 'inapp',
+              appAccountToken,
+              autoAcknowledgePurchases: false,
+              isConsumable: false,
+            });
+            if (transaction.purchaseState === '2') {
+              note.textContent = 'Google Play payment is pending. Coins will be added after it completes.';
+              return;
+            }
+            if (transaction.purchaseState !== '1' || !transaction.purchaseToken) {
+              throw new Error('Google Play has not confirmed this purchase.');
+            }
+            await verifyPurchase(pack.productId, transaction.purchaseToken);
+          } catch (error) {
+            note.textContent = error?.message || t('retry');
+            if (transaction?.purchaseToken) {
+              try {
+                const current = await wallet.refresh();
+                if (current) balance.textContent = count(Number(current.coins) || 0);
+              } catch (refreshError) {
+                console.warn('[wallet] balance refresh failed after purchase verification error', refreshError);
+              }
+            }
+          } finally {
+            button.disabled = false;
+          }
+        },
+      },
+      h('span', { class: 'play-topup-coins' }, `${count(Number(pack.coins) || 0)} ${t('coins')}`),
+      h('span', { class: 'play-topup-price' }, product.priceString || ''));
+      options.append(button);
+    }
+
+    try {
+      const appAccountToken = await purchaseAccountToken();
+      const { purchases = [] } = await billing.getPurchases({
+        productType: 'inapp',
+        appAccountToken,
+      });
+      for (const purchase of purchases) {
+        if (purchase.purchaseState !== '1' || !purchase.purchaseToken
+          || !visiblePacks.some(pack => pack.productId === purchase.productIdentifier)) continue;
+        try {
+          note.textContent = t('loading');
+          await verifyPurchase(purchase.productIdentifier, purchase.purchaseToken);
+        } catch (error) {
+          console.error('[wallet] pending Google Play purchase could not be verified', error);
+          note.textContent = error?.message || t('retry');
+        }
+      }
+    } catch (error) {
+      console.error('[wallet] pending Google Play purchases could not be checked', error);
+      note.textContent = error?.message || t('retry');
+    }
+  } catch (error) {
+    console.error('[wallet] Google Play coin packages could not be loaded', error);
+    options.replaceChildren(h('p', { class: 'muted center', role: 'status' }, error?.message || t('retry')));
+  }
+}
 
 export class NovaMenu {
   constructor({ onSignedOut, openStudioPost } = {}) {
@@ -178,11 +312,13 @@ export class NovaMenu {
       const code = h('input', { class: 'field', maxlength: '40', placeholder: 'XXXX-XXXX', autocapitalize: 'characters', spellcheck: 'false', 'aria-label': t('topUp') });
       const note = status();
       const balance = h('b', { class: 'nova-big' }, count(Number(info?.coins) || 0));
+      const playTopups = h('div', { class: 'play-topups', hidden: true });
       const received = Array.isArray(info?.received) ? info.received : [];
       box.replaceChildren(
         h('div', { class: 'nova-stats' },
           h('div', {}, h('small', { class: 'muted' }, t('balance')), h('span', {}, '🪙 ', balance)),
           h('div', {}, h('small', { class: 'muted' }, t('earned')), h('b', { class: 'nova-big' }, count(Number(info?.earned) || 0)))),
+        playTopups,
         h('form', { class: 'nova-inline', onsubmit: async event => {
           event.preventDefault();
           if (!code.value.trim()) return;
@@ -190,6 +326,7 @@ export class NovaMenu {
           try {
             const result = await api(`${config.api.wallet}?action=redeem-topup-code`, { method: 'POST', body: { code: code.value.trim() }, timeout: 15000 });
             balance.textContent = count(Number(result?.coins) || 0);
+            wallet.mutate({ coins: Number(result?.coins) || 0 });
             note.textContent = result?.message || `+${count(Number(result?.added) || 0)} ${t('coins')}`;
             code.value = '';
           } catch (error) { fail(note, error); }
@@ -202,6 +339,7 @@ export class NovaMenu {
             h('div', { class: 'chat-text' }, h('b', {}, item.from || 'MilkyWay'), h('span', { class: 'muted' }, ago(item.at))),
             h('em', { class: 'nova-coins' }, `+${count(Number(item.earned) || 0)}`))))
           : h('p', { class: 'muted center' }, t('empty')));
+      await renderPlayCoinPackages(playTopups, balance, note);
     } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
   }
 

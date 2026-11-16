@@ -658,6 +658,13 @@ html[data-low-end] .create-orb, html[data-low-end] .gift-card, html[data-low-end
 .nova-big { font-size: 22px; font-weight: 800; }
 .nova-inline { display: flex; gap: 8px; }
 .nova-inline .field { flex: 1; min-width: 0; }
+.play-topups { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.035); }
+.play-topups > .nova-section { margin: 0; }
+.play-topup-list { display: grid; gap: 8px; }
+.play-topup-option { min-width: 0; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); text-align: left; }
+.play-topup-option:disabled { opacity: .6; }
+.play-topup-coins { font-weight: 700; }
+.play-topup-price { color: var(--muted); font-weight: 650; }
 .nova-list { display: grid; }
 .nova-list-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
 .nova-list-row .gift-icon, .nova-kind { font-size: 24px; width: 32px; text-align: center; }

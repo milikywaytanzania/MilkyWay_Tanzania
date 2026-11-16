@@ -91,8 +91,14 @@ if (!/android\.permission\.INTERNET/.test(manifest)) {
 if (/android:usesCleartextTraffic\s*=\s*"true"/.test(manifest)) {
   throw new Error('Cleartext HTTP traffic must remain disabled.');
 }
-// LIVE needs the microphone and camera; the WebView only prompts for them when the app declares them.
-const liveAccess = ['CAMERA', 'RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'].filter(name => !new RegExp(`android\\.permission\\.${name}\\b`).test(manifest));
-if (liveAccess.length) {
-  writeFileSync(manifestPath, manifest.replace('</manifest>', `${liveAccess.map(name => `    <uses-permission android:name="android.permission.${name}" />\n`).join('')}</manifest>`));
+// LIVE and Play Billing permissions must survive regeneration of the Capacitor Android project.
+const neededPermissions = [
+  'android.permission.CAMERA',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.MODIFY_AUDIO_SETTINGS',
+  'com.android.vending.BILLING',
+];
+const missingPermissions = neededPermissions.filter(name => !manifest.includes(`android:name="${name}"`));
+if (missingPermissions.length) {
+  writeFileSync(manifestPath, manifest.replace('</manifest>', `${missingPermissions.map(name => `    <uses-permission android:name="${name}" />\n`).join('')}</manifest>`));
 }

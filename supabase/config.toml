@@ -1,6 +1,9 @@
 [functions.livekit-token]
 verify_jwt = false
 
+[functions.google-play-verify]
+verify_jwt = true
+
 # Auth links (password reset, email confirmation) must point at the live domain, never localhost.
 # Apply to the hosted project with `supabase config push`, or mirror these values in
 # Dashboard → Authentication → URL Configuration.
