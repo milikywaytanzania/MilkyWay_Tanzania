@@ -58,7 +58,7 @@ export class FeedView {
   /** Switches between "foryou" and "following". Cached posts paint immediately. */
   show(scope) {
     idle(() => watchPosts(() => this.scope).catch(error => console.warn('[feed] realtime setup failed', error)), 1800);
-    if (scope === this.scope) { this.source.refresh(); return; }
+    if (scope === this.scope) { this.reload(); return; }
     this.scope = scope;
     this.unsubscribe?.();
     this.interacted = false;
@@ -66,10 +66,17 @@ export class FeedView {
     this.pager.setItems([], { keepKey: false });
     this.#setStatus('loading');
     this.unsubscribe = this.source.source.subscribe(value => this.#apply(value));
-    this.source.load().then(value => { if (!value) this.source.refresh().then(() => this.#emptyCheck()); else this.#emptyCheck(); });
+    const source = this.source;
+    source.load().then(() => source.refresh()).then(() => this.#emptyCheck(source));
   }
 
-  reload() { this.interacted = false; return this.source?.refresh().then(() => this.#emptyCheck()); }
+  reload() {
+    this.interacted = false;
+    const source = this.source;
+    if (!source) return Promise.resolve();
+    this.#setStatus('loading');
+    return source.refresh().then(() => this.#emptyCheck(source));
+  }
   focus() { this.surface.focus({ preventScroll: true }); }
 
   // Sponsored ads and friend suggestions load in the background and are woven in once they arrive.
@@ -98,9 +105,11 @@ export class FeedView {
     if (items.length) this.#setStatus(null);
   }
 
-  #emptyCheck() {
+  #emptyCheck(source = this.source) {
+    if (source !== this.source) return;
     if (this.pager.items.length) return this.#setStatus(null);
-    this.#setStatus(navigator.onLine === false ? 'offline' : this.scope === 'following' ? 'emptyFollowing' : 'empty');
+    if (navigator.onLine === false) return this.#setStatus('offline');
+    this.#setStatus(source?.source.error ? 'feedLoadFailed' : this.scope === 'following' ? 'emptyFollowing' : 'empty');
   }
 
   #setStatus(kind) {

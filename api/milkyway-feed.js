@@ -7,7 +7,7 @@
 //   → { posts: [{ id, author, caption, media, createdAt, likes, comments, liked, saved }], next: <ISO time> | null }
 //   POST /api/milkyway-feed?action=save { post, on }   (signed in) → { saved }
 //   GET  /api/milkyway-feed?action=saved               (signed in) → { saved: [{ postId, savedAt }] }
-import { route, isUuid, eq, inList, ApiError } from './_lib/supa.js';
+import { route, isUuid, eq, inList, ApiError, isMissingSchema } from './_lib/supa.js';
 import { savedAmong, setSaved, savedList } from './_lib/saves.js';
 
 const FOLLOW_TABLES = ['mw_follows', 'follows'];
@@ -17,6 +17,8 @@ const clamp = (value, min, max, fallback) => {
 };
 const validTime = value => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
 const quiet = promise => promise.catch(() => null);
+const POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at';
+const LEGACY_POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,created_at';
 // Posts store media_type as 'video' / 'image', a MIME type ('video/mp4', 'image/jpeg') or nothing at all (older posts),
 // so the file extension decides when the type is missing or unknown.
 const VIDEO_FILE = /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i;
@@ -40,7 +42,7 @@ async function page({ ctx, query }) {
   const limit = clamp(query.limit, 4, 30, 12);
   const scope = query.scope === 'following' && me ? 'following' : 'foryou';
   // Over-fetch a little so privacy filtering rarely leaves a short page.
-  const filters = [`select=id,author_id,author_name,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at`, `order=created_at.desc`, `limit=${limit * 2}`];
+  const filters = [`select=${POST_FIELDS}`, `order=created_at.desc`, `limit=${limit * 2}`];
   if (validTime(query.before)) filters.push(`created_at=lt.${encodeURIComponent(new Date(query.before).toISOString())}`);
   // Default: every post (text posts render as cards). media=video → videos only, media=visual → photos + videos.
   if (query.media === 'video') filters.push('media_type=ilike.video*');
@@ -53,7 +55,16 @@ async function page({ ctx, query }) {
     filters.push(`author_id=${inList(authors)}`);
   }
 
-  const rows = (await ctx.rest(`mw_posts?${filters.join('&')}`)) || [];
+  let rows;
+  try {
+    rows = (await ctx.rest(`mw_posts?${filters.join('&')}`)) || [];
+  } catch (error) {
+    const message = String(error?.message || '');
+    const missingSlideshowFields = isMissingSchema(error)
+      && /media_items|audio_url|slideshow_style/i.test(message);
+    if (!missingSlideshowFields) throw error;
+    rows = (await ctx.rest(`mw_posts?${filters.map(filter => filter.startsWith('select=') ? `select=${LEGACY_POST_FIELDS}` : filter).join('&')}`)) || [];
+  }
   if (!rows.length) return { posts: [], next: null };
   const ids = rows.map(row => row.id);
   const authorIds = [...new Set(rows.map(row => String(row.author_id)).filter(isUuid))];

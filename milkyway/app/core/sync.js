@@ -25,6 +25,7 @@ export function resource(key, fetcher, { maxAge = 60_000, scope = true, persist 
   let print = '';
   let inflight = null;
   let loadedKey = null;
+  let error = null;
 
   const publish = (next, source) => {
     const nextPrint = fingerprint(next);
@@ -45,6 +46,7 @@ export function resource(key, fetcher, { maxAge = 60_000, scope = true, persist 
 
   const api = {
     get value() { return value; },
+    get error() { return error; },
     subscribe(fn) {
       subscribers.add(fn);
       if (value !== undefined) fn(value, 'memory');
@@ -62,12 +64,14 @@ export function resource(key, fetcher, { maxAge = 60_000, scope = true, persist 
       const k = fullKey();
       inflight = Promise.resolve().then(fetcher).then(next => {
         if (k !== fullKey()) return value;
+        error = null;
         store.set(k, persist(next));
         publish(next, 'network');
         return next;
-      }).catch(error => {
-        if (!isNetworkError(error)) console.warn(`[sync] ${key} refresh failed`, error);
-        bus.emit('sync-error', { key, error });
+      }).catch(caughtError => {
+        error = caughtError;
+        if (!isNetworkError(caughtError)) console.warn(`[sync] ${key} refresh failed`, caughtError);
+        bus.emit('sync-error', { key, error: caughtError });
         return value;
       }).finally(() => { inflight = null; });
       return inflight;
@@ -78,7 +82,7 @@ export function resource(key, fetcher, { maxAge = 60_000, scope = true, persist 
       store.set(fullKey(), persist(next));
       publish(next, 'local');
     },
-    reset() { value = undefined; print = ''; loadedKey = null; },
+    reset() { value = undefined; print = ''; loadedKey = null; error = null; },
   };
   resources.set(id, api);
   return api;

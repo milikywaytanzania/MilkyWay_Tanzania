@@ -64,15 +64,53 @@ test('feed cursor resumes right after the last returned post', async () => {
   assert.equal(payload.next, payload.posts[3].createdAt);
 });
 
+test('Orbit feed falls back to core post columns when slideshow columns are absent', async () => {
+  const calls = [];
+  globalThis.fetch = async url => {
+    const address = String(url);
+    calls.push(address);
+    if (address.includes('/auth/v1/user')) return new Response('{}', { status: 401 });
+    if (address.includes('/rest/v1/mw_posts?')) {
+      if (address.includes('media_items')) {
+        return new Response(JSON.stringify({ message: "Could not find the 'media_items' column of 'mw_posts' in the schema cache" }), {
+          status: 400, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify([{
+        id: P(4), author_id: A, author_name: 'Asha', caption: 'Existing post',
+        media_url: null, media_type: null, created_at: '2026-11-14T10:00:00Z',
+      }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const { status, payload } = await call({ action: 'page', scope: 'foryou', limit: '5' });
+  assert.equal(status, 200);
+  assert.deepEqual(payload.posts.map(post => post.id), [P(4)]);
+  assert.equal(calls.filter(url => url.includes('/rest/v1/mw_posts?')).length, 2);
+  assert.match(calls[0], /media_items/);
+  assert.doesNotMatch(calls[1], /media_items|audio_url|slideshow_style/);
+  assert.doesNotMatch(calls[1], /author_id=/, 'the For You query remains global');
+});
+
 test('Orbit feed subscribes to global post changes and Supabase publishes mw_posts', () => {
   const feed = readFileSync(new URL('../milkyway/app/data/feed.js', import.meta.url), 'utf8');
   const migration = readFileSync(new URL('../supabase/migrations/20261116_milkyway_orbit_feed_realtime.sql', import.meta.url), 'utf8');
+  const repository = readFileSync(new URL('../api/milkyway-feed.js', import.meta.url), 'utf8');
+  const view = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const sync = readFileSync(new URL('../milkyway/app/core/sync.js', import.meta.url), 'utf8');
   assert.match(feed, /table:\s*'mw_posts'/);
   assert.match(feed, /active\?\.refresh\(\)/);
+  assert.match(repository, /scope === 'following'[\s\S]*author_id=\$\{inList\(authors\)\}/);
+  assert.match(repository, /public feed includes every author|POST_FIELDS/);
+  assert.match(migration, /using \(public\.mw_profile_posts_visible\(author_id::text\)\)/);
+  assert.doesNotMatch(migration, /using\s*\(true\)/i, 'public posts must continue to respect account privacy');
   assert.match(migration, /alter table public\.mw_posts enable row level security/i);
   assert.match(migration, /grant select on public\.mw_posts to anon, authenticated/i);
   assert.match(migration, /mw_posts_orbit_read/);
   assert.match(migration, /alter publication supabase_realtime add table public\.mw_posts/i);
+  assert.match(view, /source\.load\(\)\.then\(\(\) => source\.refresh\(\)\)/);
+  assert.match(view, /source\?\.source\.error[\s\S]*feedLoadFailed/);
+  assert.match(sync, /get error\(\) \{ return error; \}/);
 });
 
 test('LIVE guest stage grants publisher permissions and renders allocated guest seats', () => {
@@ -192,19 +230,42 @@ test('mobile homepage keeps its content and shows a direct APK download button',
   assert.match(serviceWorker, /version: 'v14'/);
 });
 
-test('feed sharing uses native share or a short copy toast, and failed media uses an icon fallback', () => {
+test('share sheets fit the screen and support native sharing or copy fallback', () => {
   const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
   const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
   const live = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
+  const share = readFileSync(new URL('../milkyway/app/ui/share-sheet.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
-  assert.match(feed, /navigator\.share\(\{ title: post\.author\.name/);
-  assert.match(feed, /navigator\.clipboard\.writeText\(url\); toast\(t\('linkCopied'\)\)/);
-  for (const source of [feed, viewer, live]) assert.doesNotMatch(source, /toast\(url\)/);
+  for (const source of [feed, viewer, live]) assert.match(source, /openShare\(/);
+  assert.match(share, /navigator\.share\(\{ title: tray\.title, text: tray\.text, url: tray\.url \}\)/);
+  assert.match(share, /navigator\.clipboard\?\.writeText/);
+  assert.match(share, /document\.execCommand\('copy'\)/);
+  assert.match(styles, /\.share-sheet/);
   assert.match(feed, /mediaPlaceholder\(t\('imageUnavailable'\)\)/);
   assert.match(feed, /video\.addEventListener\('error'/);
   assert.match(viewer, /video\.addEventListener\('error'/);
   assert.match(viewer, /mediaPlaceholder\(t\('imageUnavailable'\)\)/);
   assert.match(styles, /\.media-missing-icon/);
+});
+
+test('LIVE settings schema and follower post notifications have an idempotent Realtime migration', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261117_milkyway_live_settings_and_post_notifications.sql', import.meta.url), 'utf8');
+  const repair = readFileSync(new URL('../supabase/milkyway-schema-repair.sql', import.meta.url), 'utf8');
+  const notifications = readFileSync(new URL('../milkyway/app/data/post-notifications.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
+  assert.match(migration, /add column if not exists settings jsonb not null default '\{\}'::jsonb/i);
+  assert.match(migration, /having count\(distinct host_id\) = 1/i);
+  assert.match(migration, /create policy mw_live_settings_host[\s\S]*mw_is_live_host\(room_name\)[\s\S]*host_id = auth\.uid\(\)/i);
+  assert.match(migration, /create table if not exists public\.mw_post_notifications/i);
+  assert.match(migration, /create trigger mw_posts_notify_followers/i);
+  assert.match(migration, /follow\.following_id::text = new\.author_id::text/i);
+  assert.match(migration, /recipient_id = auth\.uid\(\)/i);
+  assert.match(migration, /alter publication supabase_realtime add table public\.mw_post_notifications/i);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+  assert.match(repair, /supabase\/migrations\/20261117_milkyway_live_settings_and_post_notifications\.sql/);
+  assert.match(notifications, /table: 'mw_post_notifications'/);
+  assert.match(notifications, /filter: `recipient_id=eq\.\$\{currentRecipient\}`/);
+  assert.match(entry, /import\('\.\/data\/post-notifications\.js'\)/);
 });
 
 test('public Supabase content uses DOM text nodes and validates media URLs', () => {
