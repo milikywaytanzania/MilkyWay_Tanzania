@@ -117,7 +117,7 @@ async function page({ ctx, query }) {
         url: row.media_url, type: mediaKind(row.media_url, row.media_type),
         items: Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
         audioUrl: typeof row.audio_url === 'string' && /^https:\/\//i.test(row.audio_url) ? row.audio_url : '',
-        style: ['fade', 'zoom', 'cinema'].includes(row.slideshow_style) ? row.slideshow_style : 'fade',
+        style: ['fade', 'zoom', 'cinema', 'page', 'slide'].includes(row.slideshow_style) ? row.slideshow_style : 'fade',
       } : null,
       createdAt: row.created_at,
       likes: likes.get(row.id) || 0,

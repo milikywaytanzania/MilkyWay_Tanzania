@@ -10,7 +10,6 @@ const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_VIDEO = 100 * 1024 * 1024;
 const MAX_AUDIO = 25 * 1024 * 1024;
 const MAX_PHOTOS = 8;
-const SLIDESHOW_STYLES = ['fade', 'zoom', 'cinema'];
 
 function publishError(error, phase) {
   const message = String(error?.message || error || '');
@@ -42,7 +41,9 @@ export class ComposeSheet {
     this.style = h('select', { class: 'field', 'aria-label': t('slideshowStyle') },
       h('option', { value: 'fade' }, t('styleFade')),
       h('option', { value: 'zoom' }, t('styleZoom')),
-      h('option', { value: 'cinema' }, t('styleCinema')));
+      h('option', { value: 'cinema' }, t('styleCinema')),
+      h('option', { value: 'page' }, t('stylePage')),
+      h('option', { value: 'slide' }, t('styleSlide')));
     this.assist = h('button', { class: 'pill-btn', type: 'button', onclick: () => this.#autoStyle() }, t('autoStyle'));
     this.audioPreview = h('div', { class: 'compose-audio-preview' });
     this.message = h('p', { class: 'muted', role: 'status' });
@@ -126,7 +127,7 @@ export class ComposeSheet {
     } catch (error) {
       console.warn('[compose] slideshow style analysis unavailable', error);
     }
-    this.style.value = this.files.length >= 5 || portraitCount >= Math.ceil(this.files.length / 2) ? 'zoom' : 'cinema';
+    this.style.value = this.files.length >= 5 || portraitCount >= Math.ceil(this.files.length / 2) ? 'slide' : 'page';
     this.message.textContent = t('autoStyleApplied');
   }
 

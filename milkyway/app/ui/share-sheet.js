@@ -16,6 +16,24 @@ function hasDeviceShare() {
   return Boolean(nativeSharePlugin() || typeof navigator.share === 'function');
 }
 
+function sharePayload(current) {
+  return [current.text, current.url].filter(Boolean).join(' ');
+}
+
+function platformOptions(current) {
+  const message = sharePayload(current);
+  const encoded = encodeURIComponent(message);
+  const url = encodeURIComponent(current.url);
+  const title = encodeURIComponent(current.title);
+  return [
+    { name: 'WhatsApp', mark: 'WA', className: 'whatsapp', href: `https://wa.me/?text=${encoded}` },
+    { name: 'Facebook', mark: 'f', className: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${encodeURIComponent(current.text || current.title)}` },
+    { name: 'Telegram', mark: '➤', className: 'telegram', href: `https://t.me/share/url?url=${url}&text=${encodeURIComponent([current.title, current.text].filter(Boolean).join(' '))}` },
+    { name: 'X', mark: '𝕏', className: 'x', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(current.text || current.title)}&url=${url}` },
+    { name: t('sms'), mark: 'SMS', className: 'sms', href: `sms:?body=${encoded}`, sms: true },
+  ];
+}
+
 async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     try { await navigator.clipboard.writeText(value); return true; }
@@ -31,7 +49,7 @@ async function copyText(value) {
   return copied;
 }
 
-function shareWithDevice(current, { openFallback = false } = {}) {
+function shareWithDevice(current) {
   if (current.sharing) return;
   const plugin = nativeSharePlugin();
   if (!plugin && typeof navigator.share !== 'function') return;
@@ -50,14 +68,12 @@ function shareWithDevice(current, { openFallback = false } = {}) {
   } catch (error) {
     current.sharing = false;
     current.native.disabled = false;
-    if (openFallback) current.sheet.open();
-    else if (error?.name !== 'AbortError') toast(error?.message || t('retry'));
+    if (error?.name !== 'AbortError') toast(error?.message || t('retry'));
     return;
   }
   Promise.resolve(result).then(() => current.sheet.close()).catch(error => {
     if (error?.name === 'AbortError') return;
-    if (openFallback) current.sheet.open();
-    else toast(error?.message || t('retry'));
+    toast(error?.message || t('retry'));
   }).finally(() => {
     current.sharing = false;
     current.native.disabled = false;
@@ -69,6 +85,7 @@ function getTray() {
   const sheet = new Sheet({ title: t('share'), className: 'share-sheet', autoFocus: false });
   const description = h('p', { class: 'share-description' });
   const url = h('input', { class: 'field share-url', type: 'url', readonly: '', 'aria-label': t('shareLink') });
+  const options = h('div', { class: 'share-options', role: 'group', 'aria-label': t('share') });
   const copy = h('button', { class: 'pill-btn hot wide', type: 'button' }, t('copyLink'));
   const native = h('button', { class: 'pill-btn wide', type: 'button' }, t('shareUsingDevice'));
   copy.addEventListener('click', async () => {
@@ -81,8 +98,8 @@ function getTray() {
     finally { copy.disabled = false; }
   });
   native.addEventListener('click', () => shareWithDevice(tray));
-  sheet.body.append(description, url, native, copy);
-  tray = { sheet, description, urlInput: url, native, title: '', text: '', url: '' };
+  sheet.body.append(description, options, url, native, copy);
+  tray = { sheet, description, options, urlInput: url, native, title: '', text: '', url: '' };
   return tray;
 }
 
@@ -98,9 +115,12 @@ export function openShare({ title = 'MilkyWay', text = '', url } = {}) {
   current.description.textContent = text || title;
   current.urlInput.value = url;
   current.native.hidden = !hasDeviceShare();
-  if (!current.native.hidden) {
-    shareWithDevice(current, { openFallback: true });
-    return;
-  }
+  current.options.replaceChildren(...platformOptions(current).map(option => h('a', {
+    class: `share-option share-option--${option.className}`,
+    href: option.href,
+    target: option.sms ? null : '_blank',
+    rel: option.sms ? null : 'noopener noreferrer',
+    'aria-label': `${t('share')} ${option.name}`,
+  }, h('span', { class: 'share-option-mark', 'aria-hidden': 'true' }, option.mark), h('span', { class: 'share-option-name' }, option.name))));
   current.sheet.open();
 }

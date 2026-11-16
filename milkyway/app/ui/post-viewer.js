@@ -2,7 +2,7 @@
 // Swipe/arrow keys step through the grid; the owner can delete the post from here.
 import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
-import { setImage, poster, mediaKind } from '../core/media.js';
+import { setImage, image as imageUrl, poster, mediaKind } from '../core/media.js';
 import { actions } from '../data/feed.js';
 import { h, icon, count, ago, toast, brandMark, mediaPlaceholder } from './dom.js';
 import { openShare } from './share-sheet.js';
@@ -87,6 +87,7 @@ export class PostViewer {
     if (this.root.hidden) return;
     this.#stopVideo();
     this.#stopSlideshow();
+    this.#clearImagePreloads();
     this.root.classList.remove('open');
     this.root.hidden = true;
     this.stage.replaceChildren();
@@ -107,12 +108,13 @@ export class PostViewer {
   #show(index) {
     this.#stopVideo();
     this.#stopSlideshow();
+    this.#clearImagePreloads();
     this.stage.classList.remove('zoomed', 'loading');
     this.index = index;
     const post = this.post = this.posts[index];
     const kind = postKind(post);
     const url = post.media_url || post.media?.url || '';
-    this.root.dataset.style = ['fade', 'zoom', 'cinema'].includes(post.media?.style || post.slideshow_style) ? (post.media?.style || post.slideshow_style) : 'fade';
+    this.root.dataset.style = ['fade', 'zoom', 'cinema', 'page', 'slide'].includes(post.media?.style || post.slideshow_style) ? (post.media?.style || post.slideshow_style) : 'fade';
     this.root.dataset.kind = kind;
     if (kind === 'video') {
       const video = h('video', { controls: true, playsinline: true, autoplay: true, loop: true, preload: 'auto', src: url });
@@ -167,7 +169,13 @@ export class PostViewer {
           this.slideshowPlaying ? t('pauseSlideshow') : t('playSlideshow')));
     }
     this.stage.classList.add('loading');
+    this.#preloadImages(items, index);
     img.addEventListener('load', () => { if (this.post === post && this.imageIndex === index) this.stage.classList.remove('loading'); }, { once: true });
+    img.addEventListener('error', () => {
+      if (this.post !== post || this.imageIndex !== index) return;
+      this.stage.classList.remove('loading');
+      this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
+    }, { once: true });
     setImage(img, url, fullWidth(), {
       quality: 85,
       onFail: () => {
@@ -180,11 +188,39 @@ export class PostViewer {
     this.stage.replaceChildren(img, ...controls);
   }
 
+  #preloadImages(items, index) {
+    this.preloadImages ||= new Map();
+    for (const next of [index + 1, index + 2]) {
+      const url = items[next % items.length];
+      if (!url || this.preloadImages.has(url)) continue;
+      const image = new Image();
+      image.decoding = 'async';
+      image.fetchPriority = 'low';
+      image.src = imageUrl(url, fullWidth(), 85);
+      this.preloadImages.set(url, image);
+    }
+    for (const [url, image] of this.preloadImages) {
+      if (!items.includes(url)) {
+        image.src = '';
+        this.preloadImages.delete(url);
+      }
+    }
+  }
+
+  #clearImagePreloads() {
+    for (const image of this.preloadImages?.values() || []) image.src = '';
+    this.preloadImages?.clear();
+  }
+
   #stepImage(delta) {
     const items = photoItems(this.post);
     const next = this.imageIndex + delta;
     if (next < 0 || next >= items.length) return;
     this.#renderImage(this.post, next);
+    if (this.slideshowPlaying) {
+      clearTimeout(this.slideTimer);
+      this.#scheduleSlideshow(items.length);
+    }
   }
 
   #toggleSlideshow(count) {
@@ -195,14 +231,31 @@ export class PostViewer {
     }
     this.slideshowPlaying = true;
     this.#renderImage(this.post, this.imageIndex);
-    this.slideTimer = setInterval(() => {
+    this.#scheduleSlideshow(count);
+  }
+
+  #scheduleSlideshow(count) {
+    const generation = this.slideSchedule = (this.slideSchedule || 0) + 1;
+    const advance = () => {
+      if (!this.slideshowPlaying || !this.post) return;
       const next = (this.imageIndex + 1) % count;
-      this.#renderImage(this.post, next);
-    }, 3500);
+      const nextUrl = photoItems(this.post)[next];
+      const preloaded = this.preloadImages?.get(nextUrl);
+      const ready = preloaded?.complete ? Promise.resolve() : preloaded?.decode?.().catch(() => {}) || Promise.resolve();
+      ready.then(() => {
+        if (!this.slideshowPlaying || !this.post || generation !== this.slideSchedule) return;
+        this.slideTimer = setTimeout(() => {
+          this.#renderImage(this.post, next);
+          this.#scheduleSlideshow(count);
+        }, 3500);
+      });
+    };
+    advance();
   }
 
   #stopSlideshow() {
-    clearInterval(this.slideTimer);
+    clearTimeout(this.slideTimer);
+    this.slideSchedule = (this.slideSchedule || 0) + 1;
     this.slideTimer = null;
     this.slideshowPlaying = false;
   }
