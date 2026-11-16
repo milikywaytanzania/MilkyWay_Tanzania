@@ -21,6 +21,10 @@ async function fetchPage(scope, before) {
 }
 
 const feeds = new Map();
+let postsChannel = null;
+let postsStart = null;
+let postsRefresh = 0;
+let postsPoll = 0;
 export function feed(scope = 'foryou') {
   if (feeds.has(scope)) return feeds.get(scope);
   // The device keeps only the newest posts; the cursor is moved so paging resumes right after them.
@@ -58,6 +62,45 @@ export function feed(scope = 'foryou') {
   };
   feeds.set(scope, api);
   return api;
+}
+
+/** Keeps the visible feed fresh when a post is inserted, changed or removed by any account. */
+export function watchPosts(getScope = () => 'foryou') {
+  if (postsChannel) return Promise.resolve();
+  if (postsStart) return postsStart;
+  const start = async () => {
+    clearInterval(postsPoll);
+    const refresh = () => {
+      clearTimeout(postsRefresh);
+      postsRefresh = setTimeout(() => {
+        const active = feeds.get(getScope())?.source;
+        active?.refresh().catch(error => console.warn('[feed] realtime refresh failed', error));
+      }, 350);
+    };
+    try {
+      const sb = await supabase();
+      postsChannel = sb.channel('mw-orbit-posts')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mw_posts' }, refresh)
+        .subscribe(status => {
+          if (status === 'SUBSCRIBED') {
+            clearInterval(postsPoll);
+            postsPoll = 0;
+          } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+            console.warn(`[feed] posts realtime ${status.toLowerCase()}; using refresh fallback`);
+            if (!postsPoll) postsPoll = setInterval(() => {
+              if (document.visibilityState === 'visible') refresh();
+            }, 45_000);
+          }
+        });
+    } catch (error) {
+      console.warn('[feed] could not start posts realtime; using refresh fallback', error);
+      if (!postsPoll) postsPoll = setInterval(() => {
+        if (document.visibilityState === 'visible') refresh();
+      }, 45_000);
+    }
+  };
+  postsStart = start().finally(() => { postsStart = null; });
+  return postsStart;
 }
 
 /** Posts deleted on this device; views drop them even from pages they still hold in memory. */

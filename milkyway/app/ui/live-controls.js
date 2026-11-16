@@ -188,6 +188,7 @@ export class HostControls {
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '−', disabled: seats <= 1 || seats <= stage.length, onclick: () => setSeats(seats - 1) }, '−'),
           seatLabel,
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '+', disabled: seats >= MAX_SEATS, onclick: () => setSeats(seats + 1) }, '+')),
+        toggleRow(t('showGuestSlots'), !!settings.showGuestSlots, checked => run(s, 'settings', { showGuestSlots: checked })),
         seatGrid),
       section(t('admission'),
         segmented('lcAdmission', [['approval', t('admissionApproval')], ['broadcast', t('admissionOff')]], settings.admission === 'broadcast' ? 'broadcast' : 'approval',

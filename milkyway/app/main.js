@@ -35,6 +35,7 @@ const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.Pr
   openMenu: profile => novaMenu().then(menu => menu.open(profile)),
   openChat: person => { if (requireLogin()) inboxView().then(view => view.openWith(person)); },
 })));
+const profileSearch = lazy(() => import('./ui/profile-search.js').then(m => new m.ProfileSearch({ openProfile })));
 const composeSheet = lazy(() => import('./ui/compose-sheet.js').then(m => new m.ComposeSheet()));
 // Full-size post popup for photos tapped in the Orbit feed (the same viewer the Nova grid uses).
 const postViewer = lazy(() => import('./ui/post-viewer.js').then(m => new m.PostViewer({
@@ -118,11 +119,12 @@ function route() {
 addEventListener('popstate', route);
 
 document.addEventListener('click', event => {
-  const target = event.target.closest('[data-scope], [data-nav], #liveEntry, #muteToggle');
+  const target = event.target.closest('[data-scope], [data-nav], #liveEntry, #muteToggle, #profileSearch');
   if (!target) return;
   if (target.dataset.scope) { if (shell.dataset.view !== 'home') showHome(); setScope(target.dataset.scope); return; }
   if (target.id === 'liveEntry') { showLive(); return; }
   if (target.id === 'muteToggle') { playback.setMuted(!playback.muted); return; }
+  if (target.id === 'profileSearch') { profileSearch().then(view => view.open()); return; }
   const nav = target.dataset.nav;
   if (nav === 'home') { if (shell.dataset.view === 'home') feedView.reload(); else showHome(); }
   else if (nav === 'live') showLive();
@@ -148,6 +150,8 @@ shell.toggleAttribute('data-muted', playback.muted);
 
 // ---- Go -----------------------------------------------------------------------------------------------------
 document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = t(node.dataset.i18n); });
+$('profileSearch').setAttribute('aria-label', t('searchPeople'));
+$('profileSearch').title = t('searchPeople');
 setScope(scope);
 route();
 

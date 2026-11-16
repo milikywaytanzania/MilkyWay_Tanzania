@@ -10,6 +10,7 @@ import { actions } from '../data/feed.js';
 import { catalog, giftIcon } from '../data/gifts.js';
 import { VerticalPager } from './pager.js';
 import { LiveSession } from './live-session.js';
+import { loadLiveKit } from '../core/sdk.js';
 import { HostControls, InvitePrompt } from './live-controls.js';
 import { Sheet } from './sheet.js';
 import { h, icon, count, toast, paintAvatar, brandMark, avatar } from './dom.js';
@@ -28,7 +29,7 @@ function liveChrome({ host = false } = {}) {
   const cover = h('div', { class: 'live-cover' }, h('span', { class: 'avatar live-cover-avatar', style: '--s:96px' }), h('p', { class: 'live-cover-title' }), h('span', { class: 'live-badge' }, t('live')));
   const stage = h('div', { class: 'live-stage' });
   const guests = h('div', { class: 'live-guests' });
-  // Host cell + guest tiles share one grid: full screen while the host is alone, a TikTok-style split once guests join.
+  // Host cell + allocated guest seats share one grid, including seats that have not been filled yet.
   const hostLabel = h('span', { class: 'live-cell-name' });
   const hostCell = h('div', { class: 'live-host-cell' }, cover, stage, hostLabel);
   const grid = h('div', { class: 'live-grid', 'data-tiles': '1' }, hostCell, guests);
@@ -189,8 +190,8 @@ function applyRoom(slide, session, status) {
 
   // Guest boxes
   const speakers = (status.members || []).filter(member => member.state === 'speaker');
-  const ids = new Set(speakers.map(member => cssId(member.userId)));
-  for (const tile of [...r.guests.children]) if (!ids.has(tile.dataset.uid)) tile.remove();
+  const guestSeats = host && settings.showGuestSlots ? Math.max(0, Math.min(8, Number(settings.layout || 1) - 1)) : 0;
+  const orderedTiles = [];
   for (const member of speakers) {
     const tile = guestTile(slide, member.userId, member.name);
     tile.querySelector('.live-guest-name').textContent = member.userId === auth.userId ? t('youAreOnStage') : member.name || 'MilkyWay';
@@ -204,7 +205,27 @@ function applyRoom(slide, session, status) {
       muteBtn.setAttribute('aria-label', label); muteBtn.title = label;
     }
     tile._member = member;
+    orderedTiles.push(tile);
   }
+  for (let seat = 1; seat <= guestSeats; seat++) {
+    if (speakers[seat - 1]) continue;
+    let placeholder = r.guests.querySelector(`[data-seat="${seat}"]`);
+    if (!placeholder) {
+      placeholder = h('button', {
+        class: 'live-guest live-guest-slot', type: 'button', role: 'listitem', 'data-seat': seat,
+        'data-act': 'guests', 'data-no-swipe': true, 'aria-label': `${t('invite')} · ${t('seats')} ${seat}`,
+        title: t('invite'),
+      }, h('span', { class: 'live-slot-plus', 'aria-hidden': 'true' }, '+'),
+      h('span', { class: 'live-guest-name' }, t('invite')));
+    }
+    orderedTiles.push(placeholder);
+  }
+  for (const tile of [...r.guests.children]) {
+    if (!orderedTiles.includes(tile)) tile.remove();
+  }
+  orderedTiles.forEach((tile, index) => {
+    if (r.guests.children[index] !== tile) r.guests.insertBefore(tile, r.guests.children[index] || null);
+  });
   layoutGrid(slide);
 }
 
@@ -422,6 +443,7 @@ export class LiveView {
   open(room = null) {
     this.root.hidden = false;
     this.pending = room;
+    if (auth.signedIn()) loadLiveKit().catch(error => console.warn('[live] media warm-up failed', error));
     watchLives();
     lives.load().then(list => { if (!list) lives.refresh(); });
     if (this.pager.items.length && !room) { clearTimeout(this.joinTimer); this.joinTimer = setTimeout(() => this.#join(), JOIN_DELAY); }
@@ -444,6 +466,10 @@ export class LiveView {
     if (this.pending) {
       const index = list.findIndex(live => live.room === this.pending);
       if (index >= 0) { this.pending = null; this.pager.goTo(index, { animate: false }); }
+    }
+    if (!this.root.hidden && auth.signedIn()) {
+      const current = this.pager.current;
+      if (current) LiveSession.warm(current).catch(error => console.warn('[live] room warm-up failed', error));
     }
     if (!this.root.hidden && list.length && (this.pager.current?.room !== before || !this.session)) {
       clearTimeout(this.joinTimer);

@@ -48,7 +48,7 @@ const strings = {
     joinAsGuest: 'Join as guest', requestDeclined: 'The host declined your request', requestCancelled: 'Request cancelled', requestsToJoin: 'Requests to join',
     approve: 'Approve', reject: 'Reject', seatsFull: 'All guest seats are full', guestApproved: 'Guest is joining the stage',
     wantsToJoin: 'wants to join as a guest', newRequests: 'new guest requests', removeGuestFirst: 'Remove a guest from the stage first',
-    openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite',
+    openSeat: 'Open seat', closedSeat: 'Closed', emptySeat: 'Invite', showGuestSlots: 'Show open guest slots',
     joiningStage: 'Joining the stage…', movedToAudience: 'The host moved you back to the audience', hostAllowedMic: 'The host allowed your mic again', leftStage: 'You left the stage',
     muteMyMic: 'Mute my mic', unmuteMyMic: 'Unmute my mic', cameraOffAction: 'Turn camera off', cameraOnAction: 'Turn camera on',
     // Nova menu & settings
@@ -121,7 +121,7 @@ const strings = {
     joinAsGuest: 'Jiunge kama mgeni', requestDeclined: 'Mwenyeji amekataa ombi lako', requestCancelled: 'Ombi limeghairiwa', requestsToJoin: 'Maombi ya kujiunga',
     approve: 'Kubali', reject: 'Kataa', seatsFull: 'Viti vyote vya wageni vimejaa', guestApproved: 'Mgeni anajiunga jukwaani',
     wantsToJoin: 'anaomba kujiunga kama mgeni', newRequests: 'maombi mapya ya wageni', removeGuestFirst: 'Ondoa mgeni jukwaani kwanza',
-    openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika',
+    openSeat: 'Fungua nafasi', closedSeat: 'Imefungwa', emptySeat: 'Alika', showGuestSlots: 'Onyesha nafasi wazi za wageni',
     joiningStage: 'Unaingia jukwaani…', movedToAudience: 'Mwenyeji amekurudisha kwa watazamaji', hostAllowedMic: 'Mwenyeji amekuruhusu kutumia maikrofoni tena', leftStage: 'Umetoka jukwaani',
     muteMyMic: 'Zima maikrofoni yangu', unmuteMyMic: 'Washa maikrofoni yangu', cameraOffAction: 'Zima kamera', cameraOnAction: 'Washa kamera',
     // Menyu ya Nova na mipangilio

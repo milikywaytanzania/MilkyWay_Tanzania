@@ -2585,6 +2585,25 @@ $$;
 notify pgrst, 'reload schema';
 
 -- ===============================================================================================================
+-- supabase/migrations/20261115_milkyway_live_guest_approval_only.sql
+-- ===============================================================================================================
+-- Guests reach the LIVE stage only through the host's approval.
+-- Viewers may write their own member row as 'viewer' or 'pending' (request to join / cancel / leave). The 'speaker'
+-- state — which the token gateway uses to sign publisher tokens — can only be written by the host (or by the server
+-- acting for the host). The old "anyone can join" (admission = 'direct') exception is removed.
+drop policy if exists mw_live_members_self on public.mw_live_room_members;
+create policy mw_live_members_self on public.mw_live_room_members for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid() and state in ('viewer', 'pending') and host_muted = false);
+
+-- Rooms saved with the retired admission mode fall back to request & approve.
+update public.mw_live_room_settings
+   set settings = jsonb_set(settings, '{admission}', '"approval"')
+ where settings ->> 'admission' = 'direct';
+
+notify pgrst, 'reload schema';
+
+-- ===============================================================================================================
 -- supabase/migrations/20261115_milkyway_saves_rls.sql
 -- ===============================================================================================================
 -- Fixes: new row violates row-level security policy for table "mw_saves".
@@ -2641,6 +2660,29 @@ begin
   end if;
 end $$;
 
+notify pgrst, 'reload schema';
+
+-- ===============================================================================================================
+-- supabase/migrations/20261116_milkyway_orbit_feed_realtime.sql
+-- ===============================================================================================================
+-- Public Orbit reads include all posts from public profiles while the existing privacy and audience policies still gate
+-- private accounts, blocked relationships, followers-only posts and only-me posts.
+alter table public.mw_posts enable row level security;
+grant select on public.mw_posts to anon, authenticated;
+drop policy if exists mw_posts_orbit_read on public.mw_posts;
+create policy mw_posts_orbit_read on public.mw_posts for select to anon, authenticated
+using (public.mw_profile_posts_visible(author_id::text));
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+    and not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'mw_posts'
+    ) then
+    alter publication supabase_realtime add table public.mw_posts;
+  end if;
+end $$;
 notify pgrst, 'reload schema';
 
 -- ===============================================================================================================

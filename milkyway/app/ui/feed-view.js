@@ -5,11 +5,11 @@
 //    rail: profile+follow, like, comments, save, gift, share.
 import { config } from '../config.js';
 import { auth } from '../core/net.js';
-import { bus } from '../core/events.js';
+import { bus, idle } from '../core/events.js';
 import { device } from '../core/device.js';
 import { setImage, poster, mediaKind } from '../core/media.js';
 import { t } from '../core/i18n.js';
-import { feed, actions, deletedPosts } from '../data/feed.js';
+import { feed, actions, deletedPosts, watchPosts } from '../data/feed.js';
 import { profiles } from '../data/profiles.js';
 import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
@@ -56,6 +56,7 @@ export class FeedView {
 
   /** Switches between "foryou" and "following". Cached posts paint immediately. */
   show(scope) {
+    idle(() => watchPosts(() => this.scope).catch(error => console.warn('[feed] realtime setup failed', error)), 1800);
     if (scope === this.scope) { this.source.refresh(); return; }
     this.scope = scope;
     this.unsubscribe?.();

@@ -29,6 +29,7 @@ import { config } from '../config.js';
 import { t } from '../core/i18n.js';
 import { api, auth, supabase, isNetworkError, accessToken } from '../core/net.js';
 import { loadLiveKit } from '../core/sdk.js';
+import { device } from '../core/device.js';
 import { sendGift } from '../data/gifts.js';
 
 const encoder = new TextEncoder();
@@ -39,6 +40,7 @@ const HOST_POLL_MS = 4_000;   // the host watches guest requests closely
 const STAGE_POLL_MS = 5_000;  // viewers who requested, were invited or are on stage
 const HOST_GRACE_MS = 25_000;
 const tokenCache = new Map(); // room → { payload, at }
+const tokenRequests = new Map();
 // Host decision → the signal the affected viewer receives (they re-read the room at once).
 const HOST_SIGNALS = { approve: 'stage-approve', reject: 'stage-reject', remove: 'stage-remove', kick: 'stage-remove', mute: 'stage-mute', 'allow-mic': 'stage-unmute', invite: 'stage-invite', 'cancel-invite': 'stage-invite' };
 
@@ -68,9 +70,7 @@ async function directToken(body) {
 
 // Viewers always enter as subscribers (no camera / mic rights). Only `stage` — an approved guest reconnecting — asks
 // the server for a publisher token, which it signs only when the host's approval is on record.
-async function fetchToken(live, host, { direct = false, stage = false } = {}) {
-  const cached = tokenCache.get(live.room);
-  if (!direct && !host && !stage && cached && Date.now() - cached.at < 60_000) return cached.payload;
+async function requestToken(live, host, { direct = false, stage = false } = {}) {
   const body = {
     room: live.room, roomName: live.room, identity: auth.userId, name: auth.name, participantName: auth.name,
     role: host ? 'host' : 'viewer', title: live.title, scope: 'public', action: 'token', ...(stage && !host ? { stage: true } : {}),
@@ -89,11 +89,30 @@ async function fetchToken(live, host, { direct = false, stage = false } = {}) {
     }
   }
   if (!payload?.token || !payload?.serverUrl || !/^wss:/i.test(payload.serverUrl)) throw new Error('Invalid LIVE token.');
-  if (!stage && !host) tokenCache.set(live.room, { payload, at: Date.now() });
   return payload;
 }
 
+async function fetchToken(live, host, options = {}) {
+  const { direct = false, stage = false } = options;
+  const cacheable = !direct && !host && !stage;
+  const cached = tokenCache.get(live.room);
+  if (cacheable && cached && cached.payload && Date.now() - cached.at < 60_000) return cached.payload;
+  const key = `${live.room}:${host ? 'host' : stage ? 'stage' : 'viewer'}:${direct ? 'direct' : 'api'}`;
+  if (cacheable && tokenRequests.has(key)) return tokenRequests.get(key);
+  const pending = requestToken(live, host, options).then(payload => {
+    if (cacheable) tokenCache.set(live.room, { payload, at: Date.now() });
+    return payload;
+  }).finally(() => tokenRequests.delete(key));
+  if (cacheable) tokenRequests.set(key, pending);
+  return pending;
+}
+
 export class LiveSession extends Emitter {
+  /** Loads the media SDK and caches a subscriber token before the first frame is requested. */
+  static warm(live) {
+    return Promise.all([loadLiveKit(), fetchToken(live, false)]);
+  }
+
   constructor(live, { host = false, mode = live.mode || 'video' } = {}) {
     super();
     this.live = live;
@@ -160,11 +179,16 @@ export class LiveSession extends Emitter {
     const [sdk, token] = await Promise.all([loadLiveKit(), fetchToken(this.live, this.host, { stage })]);
     if (this.closed) return;
     const { Room, RoomEvent, Track } = sdk;
+    const mobileStart = device.lowEnd || device.slowNetwork || innerWidth <= 760;
     const room = new Room({
       adaptiveStream: true,
       dynacast: true,
       stopLocalTrackOnUnpublish: true,
-      videoCaptureDefaults: { resolution: { width: 1280, height: 720, frameRate: 30 }, facingMode: 'user' },
+      publishDefaults: {
+        videoEncoding: { maxBitrate: mobileStart ? 700_000 : 1_500_000, maxFramerate: mobileStart ? 24 : 30 },
+        simulcast: true,
+      },
+      videoCaptureDefaults: { resolution: mobileStart ? { width: 640, height: 360, frameRate: 24 } : { width: 1280, height: 720, frameRate: 30 }, facingMode: 'user' },
       audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
     this.room = room;
@@ -532,7 +556,7 @@ export class LiveSession extends Emitter {
     if (!this.rightsWaitSince) this.rightsWaitSince = now;
     const waited = now - this.rightsWaitSince;
     clearTimeout(this.rightsTimer);
-    if (waited > 1200 && !this.stageRejoined) {
+    if (waited > 450 && !this.stageRejoined) {
       this.stageRejoined = true;
       setTimeout(() => { if (!this.closed) this.reconnect().catch(error => this.emit('error', error)); }, 0);
       return;

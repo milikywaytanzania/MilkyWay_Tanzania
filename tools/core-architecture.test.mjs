@@ -44,6 +44,7 @@ test('feed page returns ready-to-render posts with counts and hides private and 
   ]);
   const { status, payload } = await call({ action: 'page', limit: '5' });
   assert.equal(status, 200);
+  assert.doesNotMatch(calls.find(url => url.includes('/mw_posts?')), /author_id=/, 'the For You page is global, not limited to the caller');
   assert.deepEqual(payload.posts.map(post => post.id), [P(1)]);
   assert.deepEqual(payload.posts[0], {
     id: P(1), author: { id: A, name: 'Asha K', username: 'asha', avatar: 'https://x/a.jpg' }, caption: 'hi',
@@ -60,6 +61,33 @@ test('feed cursor resumes right after the last returned post', async () => {
   const { payload } = await call({ action: 'page', limit: '4', before: '2026-11-15T00:00:00Z' });
   assert.equal(payload.posts.length, 4);
   assert.equal(payload.next, payload.posts[3].createdAt);
+});
+
+test('Orbit feed subscribes to global post changes and Supabase publishes mw_posts', () => {
+  const feed = readFileSync(new URL('../milkyway/app/data/feed.js', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261116_milkyway_orbit_feed_realtime.sql', import.meta.url), 'utf8');
+  assert.match(feed, /table:\s*'mw_posts'/);
+  assert.match(feed, /active\?\.refresh\(\)/);
+  assert.match(migration, /alter table public\.mw_posts enable row level security/i);
+  assert.match(migration, /grant select on public\.mw_posts to anon, authenticated/i);
+  assert.match(migration, /mw_posts_orbit_read/);
+  assert.match(migration, /alter publication supabase_realtime add table public\.mw_posts/i);
+});
+
+test('LIVE guest stage grants publisher permissions and renders allocated guest seats', () => {
+  const roomApi = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
+  const tokenApi = readFileSync(new URL('../api/milkyway-livekit-token.js', import.meta.url), 'utf8');
+  const liveView = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
+  const liveControls = readFileSync(new URL('../milkyway/app/ui/live-controls.js', import.meta.url), 'utf8');
+  const liveSession = readFileSync(new URL('../milkyway/app/ui/live-session.js', import.meta.url), 'utf8');
+  assert.match(roomApi, /setPublish\(room\.roomName, userId, true, room\.audio\)/);
+  assert.match(roomApi, /canPublish: sources\.length > 0, canPublishData: true, canPublishSources: sources/);
+  assert.match(tokenApi, /body\.stage === true[\s\S]*member\?\.state === 'speaker'/);
+  assert.match(tokenApi, /approvedGuest \? \(audio \? \(member\.host_muted \? \[\] : \[MIC\]\) : \(member\.host_muted \? \[CAMERA\] : \[CAMERA, MIC\]\)\)/);
+  assert.match(liveView, /const guestSeats = host && settings\.showGuestSlots[\s\S]*data-seat/);
+  assert.match(liveControls, /toggleRow\(t\('showGuestSlots'\)/);
+  assert.match(liveSession, /adaptiveStream: true,[\s\S]*dynacast: true,[\s\S]*publishDefaults:/);
+  assert.match(liveSession, /static warm\(live\)/);
 });
 
 test('app shell has no render-blocking scripts and loads the core as a module', () => {
