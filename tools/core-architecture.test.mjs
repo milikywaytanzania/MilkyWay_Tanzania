@@ -199,6 +199,22 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(giftTray, /this\.target\.session\.gift\(key\)/);
 });
 
+test('post publishing migration and errors cover slideshow schema and network failures', () => {
+  const compose = readFileSync(new URL('../milkyway/app/ui/compose-sheet.js', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261117_milkyway_post_slideshows.sql', import.meta.url), 'utf8');
+  const repair = readFileSync(new URL('../supabase/milkyway-schema-repair.sql', import.meta.url), 'utf8');
+  assert.match(migration, /add column if not exists media_items jsonb not null default '\[\]'::jsonb/i);
+  assert.match(migration, /add column if not exists audio_url text/i);
+  assert.match(migration, /add column if not exists slideshow_style text not null default 'fade'/i);
+  assert.match(migration, /validate constraint mw_posts_slideshow_style_check/i);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+  assert.match(repair, /supabase\/migrations\/20261117_milkyway_post_slideshows\.sql/);
+  assert.match(compose, /const failedPhase = error\?\.publishPhase \|\| phase/);
+  assert.match(compose, /postNetworkFailed/);
+  assert.match(compose, /postSchemaFailed/);
+  assert.match(compose, /console\.error\('\[compose\] post publication failed'/);
+});
+
 test('app shell has no render-blocking scripts and loads the core as a module', () => {
   const html = readFileSync(new URL('../milkyway/index.html', import.meta.url), 'utf8');
   const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map(match => match[1]);
@@ -239,7 +255,10 @@ test('share sheets fit the screen and support native sharing or copy fallback', 
   const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
   for (const source of [feed, viewer, live]) assert.match(source, /openShare\(/);
   assert.match(share, /shareWithDevice\(current, \{ openFallback: true \}\)/);
-  assert.match(share, /navigator\.share\(\{ title: current\.title, text: current\.text, url: current\.url \}\)/);
+  assert.match(share, /capacitor\.Plugins\?\.Share \|\| capacitor\.registerPlugin\?\.\('Share'\)/);
+  assert.match(share, /plugin\.share\(\{ \.\.\.data, dialogTitle: t\('share'\) \}\)/);
+  assert.match(share, /navigator\.canShare/);
+  assert.match(share, /result = navigator\.share\(data\)/);
   assert.match(share, /native\.addEventListener\('click', \(\) => shareWithDevice\(tray\)\)/);
   assert.match(share, /navigator\.clipboard\?\.writeText/);
   assert.match(share, /document\.execCommand\('copy'\)/);

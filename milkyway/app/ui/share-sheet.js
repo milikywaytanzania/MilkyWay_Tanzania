@@ -5,6 +5,17 @@ import { h, toast } from './dom.js';
 
 let tray;
 
+function nativeSharePlugin() {
+  const capacitor = globalThis.Capacitor;
+  if (typeof capacitor?.isNativePlatform !== 'function' || !capacitor.isNativePlatform()) return null;
+  const plugin = capacitor.Plugins?.Share || capacitor.registerPlugin?.('Share');
+  return typeof plugin?.share === 'function' ? plugin : null;
+}
+
+function hasDeviceShare() {
+  return Boolean(nativeSharePlugin() || typeof navigator.share === 'function');
+}
+
 async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     try { await navigator.clipboard.writeText(value); return true; }
@@ -21,12 +32,21 @@ async function copyText(value) {
 }
 
 function shareWithDevice(current, { openFallback = false } = {}) {
-  if (current.sharing || typeof navigator.share !== 'function') return;
+  if (current.sharing) return;
+  const plugin = nativeSharePlugin();
+  if (!plugin && typeof navigator.share !== 'function') return;
   current.sharing = true;
   current.native.disabled = true;
   let result;
   try {
-    result = navigator.share({ title: current.title, text: current.text, url: current.url });
+    const data = { title: current.title, text: current.text, url: current.url };
+    if (plugin) result = plugin.share({ ...data, dialogTitle: t('share') });
+    else {
+      if (typeof navigator.canShare === 'function' && !navigator.canShare(data)) {
+        throw new Error('This content cannot be shared by this browser.');
+      }
+      result = navigator.share(data);
+    }
   } catch (error) {
     current.sharing = false;
     current.native.disabled = false;
@@ -77,7 +97,7 @@ export function openShare({ title = 'MilkyWay', text = '', url } = {}) {
   current.url = url;
   current.description.textContent = text || title;
   current.urlInput.value = url;
-  current.native.hidden = typeof navigator.share !== 'function';
+  current.native.hidden = !hasDeviceShare();
   if (!current.native.hidden) {
     shareWithDevice(current, { openFallback: true });
     return;

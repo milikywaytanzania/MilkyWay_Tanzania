@@ -12,6 +12,24 @@ const MAX_AUDIO = 25 * 1024 * 1024;
 const MAX_PHOTOS = 8;
 const SLIDESHOW_STYLES = ['fade', 'zoom', 'cinema'];
 
+function publishError(error, phase) {
+  const message = String(error?.message || error || '');
+  const code = String(error?.code || '');
+  if (/failed to fetch|networkerror|load failed|network request failed|timeout|timed out/i.test(message)) {
+    return `${t('postNetworkFailed')} (${phase}).`;
+  }
+  if (code === 'PGRST204' || /schema cache|column .*mw_posts|could not find the .*column/i.test(message)) {
+    return `${t('postSchemaFailed')} ${message}`;
+  }
+  if (code === '42501' || /row-level security|not allowed|permission denied/i.test(message)) {
+    return `${t('postPermissionFailed')} (${phase}).`;
+  }
+  if (code === '23502' || code === '23514' || /not-null constraint|check constraint/i.test(message)) {
+    return `${t('postFieldFailed')} ${message}`;
+  }
+  return `${t('postPublishFailed')} (${phase}): ${message || t('retry')}`;
+}
+
 export class ComposeSheet {
   constructor({ onPublished } = {}) {
     this.onPublished = onPublished;
@@ -115,24 +133,38 @@ export class ComposeSheet {
   async #upload(sb, file) {
     const name = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-100) || 'media';
     const path = `milkyway/${auth.userId}/${Date.now()}-${crypto.randomUUID()}-${name}`;
-    const uploaded = await sb.storage.from('portfolio').upload(path, file, { contentType: file.type });
-    if (uploaded.error) throw uploaded.error;
-    return sb.storage.from('portfolio').getPublicUrl(path).data.publicUrl;
+    try {
+      const uploaded = await sb.storage.from('portfolio').upload(path, file, { contentType: file.type });
+      if (uploaded.error) throw uploaded.error;
+      const publicUrl = sb.storage.from('portfolio').getPublicUrl(path).data?.publicUrl;
+      if (!publicUrl) throw new Error('Supabase Storage did not return a public URL.');
+      return publicUrl;
+    } catch (error) {
+      throw Object.assign(new Error(error?.message || String(error)), {
+        cause: error,
+        code: error?.code,
+        publishPhase: `uploading ${name}`,
+      });
+    }
   }
 
   async #publish() {
     const caption = this.caption.value.trim();
     if (!caption && !this.files.length) { this.message.textContent = t('writeOrPick'); return; }
-    if (!auth.signedIn()) return;
+    if (!auth.signedIn()) { this.message.textContent = t('signInToContinue'); return; }
     this.submit.disabled = true; this.message.textContent = t('uploading');
+    let phase = 'connecting to Supabase';
     try {
       const sb = await supabase();
       const video = this.files[0]?.file.type.startsWith('video/');
+      phase = 'uploading post media';
       const mediaItems = video ? [] : await Promise.all(this.files.map(entry => this.#upload(sb, entry.file)));
       const media_url = video ? await this.#upload(sb, this.files[0].file) : mediaItems[0] || null;
+      phase = 'uploading background audio';
       const audio_url = this.audioFile ? await this.#upload(sb, this.audioFile) : null;
       const media_type = video ? 'video' : media_url ? 'image' : null;
       const author_name = profiles.peek(auth.userId)?.name || auth.name;
+      phase = 'saving post details';
       const { error } = await sb.from('mw_posts').insert({
         author_id: auth.userId, author_name, caption: caption || null, media_url, media_type,
         media_items: mediaItems, audio_url, slideshow_style: this.style.value,
@@ -145,7 +177,9 @@ export class ComposeSheet {
       for (const scope of ['foryou', 'following']) feed(scope).refresh().catch(() => {});
       this.onPublished?.();
     } catch (error) {
-      this.message.textContent = error?.message || t('retry');
+      const failedPhase = error?.publishPhase || phase;
+      console.error('[compose] post publication failed', { phase: failedPhase, error });
+      this.message.textContent = publishError(error, failedPhase);
     } finally { this.submit.disabled = false; }
   }
 }
