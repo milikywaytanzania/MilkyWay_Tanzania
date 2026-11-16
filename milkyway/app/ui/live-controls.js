@@ -188,7 +188,6 @@ export class HostControls {
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '−', disabled: seats <= 1 || seats <= stage.length, onclick: () => setSeats(seats - 1) }, '−'),
           seatLabel,
           h('button', { class: 'icon-btn', type: 'button', 'aria-label': '+', disabled: seats >= MAX_SEATS, onclick: () => setSeats(seats + 1) }, '+')),
-        toggleRow(t('showGuestSlots'), !!settings.showGuestSlots, checked => run(s, 'settings', { showGuestSlots: checked })),
         seatGrid),
       section(t('admission'),
         segmented('lcAdmission', [['approval', t('admissionApproval')], ['broadcast', t('admissionOff')]], settings.admission === 'broadcast' ? 'broadcast' : 'approval',
@@ -253,6 +252,9 @@ export class HostControls {
 
     this.settingsSheet.body.replaceChildren(
       section(t('liveTitle'), titleForm),
+      section(t('guests'),
+        toggleRow(t('showGuestSlots'), !!settings.showGuestSlots, checked => run(s, 'settings', { showGuestSlots: checked })),
+        actionBtn(t('seats'), () => this.openGuests(), 'pill-btn wide')),
       section(t('comments2'),
         segmented('lcComments', [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]], settings.comments || 'everyone',
           value => run(s, 'settings', { comments: value })),
