@@ -222,7 +222,12 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(repair, /supabase\/migrations\/20261117_milkyway_post_slideshows.sql/);
   assert.match(liveView, /data-act': 'gift'[\s\S]*html: icon\.gift/);
   assert.match(liveView, /openGifts\(\{ room: live\.room, to: live\.host, session: this\.session \}\)/);
-  assert.match(giftTray, /this\.target\.session\.gift\(key\)/);
+  assert.match(giftTray, /target\.session\.gift\(key\)/);
+  assert.match(giftTray, /this\.sendButton = h\('button'.*t\('send'\)/);
+  assert.match(giftTray, /open\(target\) \{[\s\S]*this\.sheet\.open\(\)/);
+  assert.doesNotMatch(giftTray.match(/open\(target\) \{([\s\S]*?)\n  \}/)?.[1] || '', /ensureWalletProfile/);
+  assert.match(giftTray, /#sendSelected\(\)[\s\S]*ensureWalletProfile/);
+  assert.match(giftTray, /#select\(button\.dataset\.gift\)/);
 });
 
 test('post publishing migration and errors cover slideshow schema and network failures', () => {

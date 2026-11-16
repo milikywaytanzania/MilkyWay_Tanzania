@@ -500,7 +500,9 @@ button.live-viewers { color: inherit; font: inherit; font-size: 12.5px; cursor: 
 .gift-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
 .gift-item { display: grid; justify-items: center; gap: 2px; padding: 10px 4px; border-radius: 12px; background: var(--panel-2); border: 1px solid transparent; transition: transform .15s; }
 .gift-item:active { transform: scale(.94); }
+.gift-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .gift-item.sent { border-color: var(--accent); }
+.gift-send { margin-top: 12px; }
 .gift-icon { font-size: 30px; }
 .gift-item small { font-size: 11px; text-align: center; line-height: 1.15; }
 .gift-item em { font-style: normal; font-size: 11px; color: #ffc93c; }
