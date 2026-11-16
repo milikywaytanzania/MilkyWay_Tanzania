@@ -316,7 +316,7 @@ export class PostViewer {
 
   async #share() {
     const post = this.post;
-    const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?post=${encodeURIComponent(post.id)}`;
+    const url = `${location.origin}/share/${encodeURIComponent(post.id)}`;
     openShare({ title: post.author?.name || 'MilkyWay', text: (post.caption || '').slice(0, 120), url });
   }
 

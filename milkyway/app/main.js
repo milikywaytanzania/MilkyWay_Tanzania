@@ -13,6 +13,7 @@ import { FeedView } from './ui/feed-view.js';
 import { playback } from './ui/playback.js';
 import { toast } from './ui/dom.js';
 import { profiles } from './data/profiles.js';
+import { fetchSharedPost } from './data/feed.js';
 
 // Conversation-room links belong to a screen that is not in this shell yet. Call links (#call=<id>) open the call screen.
 const comingSoon = hash => /^#live=mw-conversation-/.test(hash);
@@ -26,7 +27,9 @@ const shell = document.documentElement;
 const lazy = loader => { let value; const get = () => (value ||= loader()); get.loaded = () => Boolean(value); return get; };
 const authSheet = lazy(() => import('./ui/auth-sheet.js').then(m => new m.AuthSheet()));
 const commentsSheet = lazy(() => import('./ui/comments-sheet.js').then(m => new m.CommentsSheet({ requireLogin })));
-const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray()));
+const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray({
+  onTopUp: () => novaMenu().then(menu => menu.openWallet()),
+})));
 const inboxView = lazy(() => import('./ui/inbox-view.js').then(m => new m.InboxView()));
 const callView = lazy(() => import('./ui/call-view.js').then(m => m.calls));
 const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu()));
@@ -154,6 +157,8 @@ $('profileSearch').setAttribute('aria-label', t('searchPeople'));
 $('profileSearch').title = t('searchPeople');
 setScope(scope);
 route();
+const sharedPostId = new URLSearchParams(location.search).get('post');
+if (sharedPostId) fetchSharedPost(sharedPostId).then(openPost).catch(error => toast(error?.message || t('imageUnavailable')));
 
 // Signed-in extras, loaded when idle: incoming calls and online status.
 let signedInStarted = false;

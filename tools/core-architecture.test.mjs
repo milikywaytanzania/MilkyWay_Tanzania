@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import feed from '../api/milkyway-feed.js';
 import liveRoom from '../api/milkyway-live-room.js';
 import livekitToken from '../api/milkyway-livekit-token.js';
+import { postShareResponse } from '../api/_lib/post-share.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
@@ -54,6 +55,63 @@ test('feed page returns ready-to-render posts with counts and hides private and 
   assert.equal(payload.next, null);
   // One posts read, then every lookup in parallel — never per-post requests.
   assert.equal(calls.filter(url => url.includes('/mw_posts?')).length, 1);
+});
+
+test('shared-post metadata returns public content and excludes private or audience-restricted posts', async () => {
+  const row = {
+    id: P(9), author_id: A, author_name: 'Asha', caption: 'A lovely <post>',
+    media_url: 'https://x/photo.webp', media_type: 'image', media_items: [], media_preview_items: ['https://x/preview.webp'],
+    created_at: '2026-11-14T10:00:00Z',
+  };
+  fakeSupabase([
+    ['/rest/v1/mw_posts?', [row]],
+    ['/rest/v1/mw_profiles?', [{ id: A, display_name: 'Asha K', username: 'asha', avatar_url: '' }]],
+    ['/rpc/mw_privacy_flags', {}],
+    ['/rpc/mw_post_audiences', []],
+  ]);
+  const { status, payload } = await call({ action: 'share', id: P(9) });
+  assert.equal(status, 200);
+  assert.equal(payload.post.author.name, 'Asha K');
+  assert.equal(payload.post.caption, 'A lovely <post>');
+  assert.equal(payload.post.media.previewItems[0], 'https://x/preview.webp');
+
+  fakeSupabase([
+    ['/rest/v1/mw_posts?', [{ ...row, author_id: B }]],
+    ['/rest/v1/mw_profiles?', []],
+    ['/rpc/mw_privacy_flags', { [B]: { private: true } }],
+    ['/rpc/mw_post_audiences', []],
+  ]);
+  const hidden = await call({ action: 'share', id: P(9) });
+  assert.equal(hidden.status, 200);
+  assert.equal(hidden.payload.post, null);
+
+  fakeSupabase([
+    ['/rest/v1/mw_posts?', [row]],
+    ['/rest/v1/mw_profiles?', [{ id: A, display_name: 'Asha K', username: 'asha', avatar_url: '' }]],
+    ['/rpc/mw_privacy_flags', {}],
+    ['/rpc/mw_post_audiences', [{ post_id: P(9), can_see: false }]],
+  ]);
+  const audienceHidden = await call({ action: 'share', id: P(9) });
+  assert.equal(audienceHidden.payload.post, null);
+});
+
+test('post share page emits escaped post-specific Open Graph metadata and redirects into the app', async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    post: {
+      id: P(10), author: { name: 'Asha & Co' }, caption: 'A <great> view',
+      media: { type: 'image', url: 'https://x/post.webp', previewItems: [] },
+    },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  const response = await postShareResponse(`https://milkyway.test/share/${P(10)}`, P(10));
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, /property="og:image" content="https:\/\/x\/post\.webp"/);
+  assert.match(body, /property="og:title" content="Asha &amp; Co on MilkyWay"/);
+  assert.match(body, /property="og:description" content="A &lt;great&gt; view"/);
+  assert.match(body, /http-equiv="refresh" content="0;url=https:\/\/milkyway\.test\/milkyway\/\?post=/);
+
+  const crawler = await postShareResponse(`https://milkyway.test/share/${P(10)}`, P(10), 'WhatsApp');
+  assert.doesNotMatch(await crawler.text(), /http-equiv="refresh"/);
 });
 
 test('feed cursor resumes right after the last returned post', async () => {
@@ -227,6 +285,8 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(giftTray, /open\(target\) \{[\s\S]*this\.sheet\.open\(\)/);
   assert.doesNotMatch(giftTray.match(/open\(target\) \{([\s\S]*?)\n  \}/)?.[1] || '', /ensureWalletProfile/);
   assert.match(giftTray, /#sendSelected\(\)[\s\S]*ensureWalletProfile/);
+  assert.match(giftTray, /topUpPrompt.*hidden: true/);
+  assert.match(giftTray, /error\?\.status === 402[\s\S]*topUpPrompt\.hidden = false/);
   assert.match(giftTray, /#select\(button\.dataset\.gift\)/);
 });
 

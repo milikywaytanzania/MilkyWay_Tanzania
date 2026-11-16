@@ -7,7 +7,7 @@
 //   → { posts: [{ id, author, caption, media, createdAt, likes, comments, liked, saved }], next: <ISO time> | null }
 //   POST /api/milkyway-feed?action=save { post, on }   (signed in) → { saved }
 //   GET  /api/milkyway-feed?action=saved               (signed in) → { saved: [{ postId, savedAt }] }
-import { route, isUuid, eq, inList, ApiError, isMissingSchema } from './_lib/supa.js';
+import { route, isUuid, eq, inList, ApiError, isMissingSchema, requireUuid } from './_lib/supa.js';
 import { savedAmong, setSaved, savedList } from './_lib/saves.js';
 
 const FOLLOW_TABLES = ['mw_follows', 'follows'];
@@ -134,8 +134,49 @@ async function page({ ctx, query }) {
   return { posts, next };
 }
 
+async function sharedPost({ ctx, query }) {
+  const id = requireUuid(query.id, 'post id');
+  const rows = await ctx.rest(`mw_posts?id=${eq(id)}&select=${POST_FIELDS}&limit=1`);
+  const row = rows?.[0];
+  if (!row) return { post: null };
+
+  const authorId = String(row.author_id);
+  const [profiles, privacy, audiences] = await Promise.all([
+    ctx.rest(`mw_profiles?id=${eq(authorId)}&select=id,display_name,username,avatar_url`),
+    ctx.rpc('mw_privacy_flags', { p_ids: [authorId] }),
+    ctx.rpc('mw_post_audiences', { p_ids: [id] }),
+  ]);
+  if (privacy?.[authorId]?.private || (audiences || []).some(item => item.post_id === id && !item.can_see)) return { post: null };
+
+  const profile = profiles?.[0];
+  return {
+    post: {
+      id,
+      author: {
+        id: authorId,
+        name: profile?.display_name || row.author_name || 'MilkyWay',
+        username: profile?.username || '',
+        avatar: profile?.avatar_url || '',
+      },
+      caption: row.caption || '',
+      media: row.media_url ? {
+        url: row.media_url,
+        type: mediaKind(row.media_url, row.media_type),
+        items: Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
+        previewItems: Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
+      } : null,
+      createdAt: row.created_at,
+      likes: 0,
+      comments: 0,
+      liked: false,
+      saved: false,
+    },
+  };
+}
+
 export default route({
   page: { auth: false, run: page },
+  share: { auth: false, run: sharedPost },
   // POST { post, on } saves / unsaves one post for the signed-in user.
   save: async ({ ctx, body, method }) => {
     if (method !== 'POST') throw new ApiError(405, 'Method not allowed.');

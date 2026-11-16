@@ -49,6 +49,11 @@ export class NovaMenu {
     this.sheet.open();
   }
 
+  async openWallet() {
+    this.open(this.profile || {});
+    if (await walletReady()) this.#wallet();
+  }
+
   #screen(title, ...children) {
     this.sheet.title = title;
     this.content.replaceChildren(

@@ -5,14 +5,22 @@ import { Sheet } from './sheet.js';
 import { h, toast } from './dom.js';
 
 export class GiftTray {
-  constructor() {
+  constructor({ onTopUp } = {}) {
+    this.onTopUp = onTopUp;
     this.sheet = new Sheet({ title: t('gift'), className: 'gift-sheet' });
     this.balance = h('b', {}, '–');
     this.grid = h('div', { class: 'gift-grid' });
     this.sendButton = h('button', { class: 'pill-btn hot wide gift-send', type: 'button', disabled: true, onclick: () => this.#sendSelected() }, t('send'));
+    this.topUpPrompt = h('div', { class: 'gift-topup-prompt', hidden: true },
+      h('p', { class: 'muted center', role: 'status' }, `${t('giftFailed')}: ${t('topUp')}`),
+      h('button', { class: 'pill-btn wide', type: 'button', onclick: () => {
+        this.sheet.close();
+        if (this.onTopUp) this.onTopUp();
+        else toast(t('topUp'));
+      } }, t('topUp')));
     this.sheet.body.append(
-      h('div', { class: 'gift-head' }, h('span', {}, '🪙 ', this.balance, ' ', t('coins')), h('button', { class: 'pill-btn', type: 'button', onclick: () => toast(t('soon')) }, t('topUp'))),
-      this.grid, this.sendButton);
+      h('div', { class: 'gift-head' }, h('span', {}, '🪙 ', this.balance, ' ', t('coins'))),
+      this.grid, this.topUpPrompt, this.sendButton);
     catalog.subscribe(items => this.#render(items));
     wallet.subscribe(value => { this.balance.textContent = String(value?.coins ?? '–'); });
     this.grid.addEventListener('click', event => {
@@ -25,6 +33,7 @@ export class GiftTray {
   open(target) {
     this.target = target;
     this.selectedGift = null;
+    this.topUpPrompt.hidden = true;
     this.sheet.title = `${t('gift')} → ${target.to?.name || ''}`;
     catalog.load(); wallet.load(); wallet.refresh();
     this.#select(null);
@@ -39,6 +48,7 @@ export class GiftTray {
 
   #select(key) {
     this.selectedGift = key;
+    this.topUpPrompt.hidden = true;
     this.sendButton.disabled = !key;
     this.grid.querySelectorAll('[data-gift]').forEach(button => {
       const selected = button.dataset.gift === key;
@@ -62,7 +72,7 @@ export class GiftTray {
       setTimeout(() => button?.classList.remove('sent'), 600);
       if (!target.session) toast(`${catalog.value?.find(item => item.key === key)?.icon || '🎁'} ${t('sent')}`);
     } catch (error) {
-      if (error?.status === 402 || /not enough coins/i.test(error?.message || '')) toast(`${t('giftFailed')}: ${t('topUp')}`);
+      if (error?.status === 402 || /not enough coins/i.test(error?.message || '')) this.topUpPrompt.hidden = false;
       else toast(`${t('giftFailed')}: ${error.message}`);
     } finally { this.sendButton.disabled = !this.selectedGift; }
   }

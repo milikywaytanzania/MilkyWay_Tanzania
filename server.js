@@ -2,6 +2,7 @@ import express from 'express';
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { postShareResponse } from './api/_lib/post-share.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,6 +53,18 @@ for (const file of ['sw.js', 'sw-cache.js', 'manifest.webmanifest', 'placeholder
 }
 for (const folder of ['img', 'slides']) app.use(`/${folder}`, express.static(join(root, folder), options));
 app.get('/MilkyWay.apk', (_request, response) => response.sendFile(join(root, 'milkyway', 'download', 'MilkyWay.apk'), { headers: apkHeaders }));
+app.get('/share/:postId', async (request, response) => {
+  try {
+    const url = `${request.protocol}://${request.get('host')}${request.originalUrl}`;
+    const page = await postShareResponse(url, request.params.postId, request.get('user-agent') || '');
+    response.status(page.status);
+    page.headers.forEach((value, name) => response.setHeader(name, value));
+    response.send(await page.text());
+  } catch (error) {
+    console.error('[post-share] Could not render post preview.', error);
+    if (!response.headersSent) response.status(503).type('text/plain').send('Post preview unavailable.');
+  }
+});
 app.use('/download', express.static(join(root, 'milkyway', 'download'), { ...options, setHeaders(response, path) {
   noCache(response, path);
   if (/\.apk$/i.test(path)) for (const [name, value] of Object.entries(apkHeaders)) response.setHeader(name, value);

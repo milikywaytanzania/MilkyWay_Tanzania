@@ -20,6 +20,14 @@ async function fetchPage(scope, before) {
   return { posts, next: page?.next || null };
 }
 
+export async function fetchSharedPost(id) {
+  const params = new URLSearchParams({ action: 'share', id });
+  const result = await api(`${config.api.feed}?${params}`, { timeout: 10000 });
+  if (!result?.post) throw new Error(t('imageUnavailable'));
+  profiles.prime([result.post.author]);
+  return result.post;
+}
+
 const feeds = new Map();
 let postsChannel = null;
 let postsStart = null;
