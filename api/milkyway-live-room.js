@@ -15,6 +15,14 @@ const COMMENT_MODES = ['everyone', 'followers', 'off'];
 const SLOW_MODES = [0, 3, 10, 30, 60];
 const INVITE_TTL_MS = 3 * 60_000;
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]{2,}\.(com|net|org|io|co|tz|ke|ug|me|ly|app|link|xyz|info|biz|site|online|shop)\b)/i;
+const cleanBackground = value => {
+  if (typeof value !== 'string' || value.length > 2048) throw new ApiError(400, 'Enter a valid HTTPS background URL.');
+  if (!value.trim()) return '';
+  let url;
+  try { url = new URL(value.trim()); } catch { throw new ApiError(400, 'Enter a valid HTTPS background URL.'); }
+  if (url.protocol !== 'https:' || url.username || url.password) throw new ApiError(400, 'Background URLs must use HTTPS.');
+  return url.href;
+};
 
 const sourcesFor = (audioRoom, micAllowed) => audioRoom ? (micAllowed ? [MIC] : []) : (micAllowed ? [CAMERA, MIC] : [CAMERA]);
 // An empty source list means "every source" to LiveKit, so a guest left with no allowed source cannot publish at all.
@@ -339,7 +347,8 @@ async function handle({ ctx, body, method }) {
   if (action === 'unpin') return update({ pinned: null });
 
   if (action === 'settings') {
-    const layout = Number.isInteger(body.layout) ? Math.max(2, Math.min(21, body.layout)) : settings.layout;
+    const requestedLayout = Number.isInteger(body.layout) ? body.layout : Number(settings.layout) || 9;
+    const layout = Math.max(2, Math.min(9, requestedLayout));
     if (layout < settings.layout) {
       const speakers = await speakersOf(ctx, room.roomName);
       if (speakers.length > layout - 1) throw new ApiError(409, 'Remove a guest from the stage before reducing the number of guest seats.');
@@ -348,7 +357,7 @@ async function handle({ ctx, body, method }) {
     return update({
       layout,
       admission: ADMISSIONS.includes(body.admission) ? body.admission : settings.admission,
-      layoutStyle: typeof body.layoutStyle === 'string' && /^[a-z-]{3,30}$/.test(body.layoutStyle) ? body.layoutStyle : settings.layoutStyle,
+      layoutStyle: ['fullscreen', 'featured'].includes(body.layoutStyle) ? body.layoutStyle : settings.layoutStyle,
       hostPosition: body.hostPosition === 'end' || body.hostPosition === 'start' ? body.hostPosition : settings.hostPosition,
       mobileLayout: body.mobileLayout === 'compact' || body.mobileLayout === 'stack' ? body.mobileLayout : settings.mobileLayout,
       featuredId: body.featuredId === null ? null : isUuid(body.featuredId) ? body.featuredId : settings.featuredId,
@@ -361,6 +370,9 @@ async function handle({ ctx, body, method }) {
       likesEnabled: flag('likesEnabled'),
       showViewerCount: flag('showViewerCount'),
       allowRequests: flag('allowRequests'),
+      showGuestSlots: flag('showGuestSlots'),
+      hostBackground: body.hostBackground === undefined ? settings.hostBackground || '' : cleanBackground(body.hostBackground),
+      hostBackgroundKind: ['image', 'video'].includes(body.hostBackgroundKind) ? body.hostBackgroundKind : settings.hostBackgroundKind === 'video' ? 'video' : 'image',
     });
   }
 

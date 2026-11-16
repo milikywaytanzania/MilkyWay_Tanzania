@@ -27,11 +27,14 @@ function liveChrome({ host = false } = {}) {
   const viewers = h(host ? 'button' : 'span', { class: 'live-viewers', ...(host ? { type: 'button', 'data-act': 'viewers', 'aria-label': t('viewersTitle') } : {}) }, h('span', { html: icon.eye }), h('b', {}, '0'));
   const close = h('button', { class: 'icon-btn live-close', type: 'button', 'data-act': host ? 'end' : 'close', 'aria-label': host ? t('end') : 'Close', html: host ? '' : icon.close }, host ? t('end') : '');
   const cover = h('div', { class: 'live-cover' }, h('span', { class: 'avatar live-cover-avatar', style: '--s:96px' }), h('p', { class: 'live-cover-title' }), h('span', { class: 'live-badge' }, t('live')));
+  const background = h('div', { class: 'live-host-background', hidden: true, 'aria-hidden': 'true' },
+    h('img', { class: 'live-host-background-image', alt: '', hidden: true }),
+    h('video', { class: 'live-host-background-video', muted: true, loop: true, playsinline: true, preload: 'metadata', hidden: true }));
   const stage = h('div', { class: 'live-stage' });
   const guests = h('div', { class: 'live-guests' });
   // Host cell + allocated guest seats share one grid, including seats that have not been filled yet.
   const hostLabel = h('span', { class: 'live-cell-name' });
-  const hostCell = h('div', { class: 'live-host-cell' }, cover, stage, hostLabel);
+  const hostCell = h('div', { class: 'live-host-cell' }, background, cover, stage, hostLabel);
   const grid = h('div', { class: 'live-grid', 'data-tiles': '1' }, hostCell, guests);
   // Host only: real-time list of viewers asking to join, with one-tap Approve / Reject.
   const requests = h('div', { class: 'live-requests', hidden: true, 'data-no-swipe': true, 'aria-live': 'polite' });
@@ -68,7 +71,7 @@ function liveChrome({ host = false } = {}) {
     h('div', { class: 'live-host', 'data-act': 'profile' }, avatarNode, h('div', {}, name, h('small', { class: 'live-tag' }, t('live'))), host ? null : follow),
     viewers, close);
   const node = h('section', { class: 'slide live-slide' }, grid, brandMark('live'), h('div', { class: 'shade' }), top, tools, pinned, comments, hearts, banner, state, host ? requests : null, bar);
-  node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), viewersWrap: viewers, cover, stage, guests, grid, hostLabel, requests, pinned, comments, hearts, banner, state, input, form, tools, micBtn, camBtn, stageBtn, stageLabel, giftBtn, likeBtn, guestsBadge };
+  node._refs = { avatarNode, name, follow, viewers: viewers.querySelector('b'), viewersWrap: viewers, cover, background, stage, guests, grid, hostLabel, requests, pinned, comments, hearts, banner, state, input, form, tools, micBtn, camBtn, stageBtn, stageLabel, giftBtn, likeBtn, guestsBadge };
   // Re-arrange the grid whenever a guest tile appears or leaves (tiles come from both room status and video tracks).
   new MutationObserver(() => layoutGrid(node)).observe(guests, { childList: true });
   return node;
@@ -82,6 +85,7 @@ function layoutGrid(slide) {
   const tiles = String(Math.min(1 + r.guests.childElementCount, 10));
   if (r.grid.dataset.tiles !== tiles) r.grid.dataset.tiles = tiles;
   if (slide.dataset.tiles !== tiles) slide.dataset.tiles = tiles;
+  r.grid.style.setProperty('--side-tiles', String(Math.max(4, r.guests.childElementCount)));
   slide.classList.toggle('has-guests', tiles !== '1');
 }
 
@@ -101,6 +105,12 @@ function paintLive(slide, live) {
 function resetStage(slide) {
   const r = slide._refs;
   r.stage.replaceChildren(); r.guests.replaceChildren(); r.comments.replaceChildren(); r.hearts.replaceChildren(); r.banner.replaceChildren();
+  r.background.querySelector('img').removeAttribute('src');
+  r.background.querySelector('video').pause();
+  r.background.querySelector('video').removeAttribute('src');
+  r.background.querySelector('video').load();
+  r.background.hidden = true;
+  r.background.querySelectorAll('img,video').forEach(element => { element.hidden = true; });
   r.state.hidden = true;
   r.cover.hidden = false;
   r.pinned.hidden = true;
@@ -111,6 +121,8 @@ function resetStage(slide) {
   r.stageBtn.setAttribute('aria-label', t('requestJoin'));
   r.stageBtn.title = t('requestJoin');
   r.grid.dataset.tiles = '1';
+  r.grid.dataset.layout = 'fullscreen';
+  slide.dataset.layout = 'fullscreen';
   slide.dataset.tiles = '1';
   slide.classList.remove('has-guests');
   r.requests.hidden = true;
@@ -120,7 +132,7 @@ function resetStage(slide) {
   r.input.disabled = false;
   r.input.placeholder = t('sayHi');
   r.viewersWrap.hidden = false;
-  slide.classList.remove('has-video', 'on-stage');
+  slide.classList.remove('has-video', 'has-host-background', 'on-stage');
   slide.classList.toggle('can-request', !slide.classList.contains('host-stage'));
 }
 
@@ -155,12 +167,50 @@ function applyRoom(slide, session, status) {
   const settings = status.settings || {};
   const self = status.self || {};
   const host = session.host;
+  const layoutStyle = settings.layoutStyle === 'featured' ? 'featured' : 'fullscreen';
+  r.grid.dataset.layout = layoutStyle;
+  slide.dataset.layout = layoutStyle;
+  paintHostBackground(slide, settings);
 
   // Pinned comment
   r.pinned.hidden = !settings.pinned;
   if (settings.pinned) {
     r.pinned.replaceChildren(h('span', { html: icon.pin }), h('b', {}, settings.pinned.name || 'MilkyWay'), ' ', settings.pinned.body,
       host ? h('button', { class: 'live-unpin', type: 'button', 'data-act': 'unpin', 'aria-label': t('unpinComment'), html: icon.close }) : null);
+  }
+
+  function paintHostBackground(slide, settings) {
+    const layer = slide._refs.background;
+    const image = layer.querySelector('img');
+    const video = layer.querySelector('video');
+    const url = typeof settings.hostBackground === 'string' ? settings.hostBackground : '';
+    const kind = settings.hostBackgroundKind === 'video' ? 'video' : 'image';
+    layer.hidden = !url;
+    image.hidden = !url || kind !== 'image';
+    video.hidden = !url || kind !== 'video';
+    slide.classList.toggle('has-host-background', !!url);
+    if (!url) {
+      image.removeAttribute('src');
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      return;
+    }
+    if (kind === 'image' && image.src !== url) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      image.src = url;
+      image.onerror = () => { if (slide.classList.contains('host-stage')) toast(t('backgroundUnavailable')); };
+    }
+    if (kind === 'video' && video.src !== url) {
+      image.removeAttribute('src');
+      video.src = url;
+      video.onerror = () => { if (slide.classList.contains('host-stage')) toast(t('backgroundUnavailable')); };
+      video.play().catch(error => {
+        if (error?.name !== 'NotAllowedError' && slide.classList.contains('host-stage')) toast(t('backgroundUnavailable'));
+      });
+    }
   }
 
   // Audience controls
@@ -749,10 +799,23 @@ export class LiveView {
 async function shareLive(live) {
   const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}#live=${encodeURIComponent(live.room)}`;
   if (navigator.share) {
-    try { await navigator.share({ title: live.title || 'MilkyWay LIVE', url }); }
-    catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
-    return;
+    try { await navigator.share({ title: live.title || 'MilkyWay LIVE', url }); return; }
+    catch (error) { if (error?.name === 'AbortError') return; }
   }
-  try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-  catch { toast(t('retry')); }
+  try {
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); return; }
+      catch { /* Try the selection-based fallback on browsers without clipboard permission. */ }
+    }
+    const field = h('textarea', { readonly: '', 'aria-hidden': 'true' });
+    field.value = url;
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.append(field);
+    let copied = false;
+    try { field.select(); copied = document.execCommand('copy'); }
+    finally { field.remove(); }
+    if (!copied) throw new Error('Clipboard copy was rejected.');
+    toast(t('linkCopied'));
+  } catch { toast(t('retry')); }
 }

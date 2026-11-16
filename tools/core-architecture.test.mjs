@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import feed from '../api/milkyway-feed.js';
+import liveRoom from '../api/milkyway-live-room.js';
 import livekitToken from '../api/milkyway-livekit-token.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
@@ -88,6 +89,51 @@ test('LIVE guest stage grants publisher permissions and renders allocated guest 
   assert.match(liveControls, /toggleRow\(t\('showGuestSlots'\)/);
   assert.match(liveSession, /adaptiveStream: true,[\s\S]*dynacast: true,[\s\S]*publishDefaults:/);
   assert.match(liveSession, /static warm\(live\)/);
+});
+
+test('LIVE settings persist guest slots and featured host backgrounds with schema repair', async () => {
+  const hostId = A;
+  const room = 'mw-video-live-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const originalFetch = globalThis.fetch;
+  const saved = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const address = String(input);
+    if (address.endsWith('/auth/v1/user')) return new Response(JSON.stringify({ id: hostId }), { status: 200 });
+    if (address.includes('/mw_video_live_sessions?')) return new Response(JSON.stringify([{ id: P(1), host_id: hostId, is_live: true, title: 'Test' }]), { status: 200 });
+    if (address.includes('/mw_live_room_settings?room_name=') && init.method !== 'POST') return new Response(JSON.stringify([{ settings: { layout: 9 } }]), { status: 200 });
+    if (address.includes('/mw_live_room_settings?on_conflict=')) {
+      saved.push(JSON.parse(init.body));
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected LIVE settings request: ${address}`);
+  };
+  const callSettings = async body => {
+    let status = 200, payload;
+    const response = { headersSent: false, setHeader() { return response; }, status(code) { status = code; return response; }, json(value) { payload = value; response.headersSent = true; return response; } };
+    await liveRoom({ method: 'POST', headers: { authorization: 'Bearer test-token', apikey: 'test-public-key' }, query: {}, body: { action: 'settings', room, ...body } }, response);
+    return { status, payload };
+  };
+  try {
+    const result = await callSettings({ layout: 12, showGuestSlots: true, layoutStyle: 'featured', hostBackground: 'https://example.test/backdrop.mp4', hostBackgroundKind: 'video' });
+    assert.equal(result.status, 200);
+    assert.equal(saved[0].settings.layout, 9, 'the room allows at most eight guest seats');
+    assert.equal(saved[0].settings.showGuestSlots, true);
+    assert.equal(saved[0].settings.layoutStyle, 'featured');
+    assert.equal(saved[0].settings.hostBackground, 'https://example.test/backdrop.mp4');
+    assert.equal(saved[0].settings.hostBackgroundKind, 'video');
+    assert.equal((await callSettings({ hostBackground: 'http://example.test/backdrop.mp4' })).status, 400);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const migration = readFileSync(new URL('../supabase/migrations/20261117_milkyway_live_settings_host_id.sql', import.meta.url), 'utf8');
+  const liveView = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
+  assert.match(migration, /add column if not exists host_id uuid/i);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+  assert.match(liveView, /dataset\.layout = layoutStyle/);
+  assert.match(liveView, /live-host-background/);
+  assert.match(css, /grid-template-columns: minmax\(0, 2\.2fr\) minmax\(52px, \.8fr\)/);
 });
 
 test('app shell has no render-blocking scripts and loads the core as a module', () => {

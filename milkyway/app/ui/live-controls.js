@@ -223,7 +223,7 @@ export class HostControls {
   #renderSettings({ keepInputs = false } = {}) {
     const s = this.session, settings = s.settings;
     // Don't wipe what the host is typing when a refresh arrives.
-    if (keepInputs && this.settingsSheet.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"]')) return;
+    if (keepInputs && this.settingsSheet.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="url"]')) return;
     const people = this.#people();
     const byId = id => people.find(person => person.userId === id) || { userId: id, name: 'MilkyWay' };
 
@@ -246,6 +246,16 @@ export class HostControls {
       class: 'lc-chip', type: 'button', 'aria-label': `${t('remove')} ${word}`,
       onclick: () => run(s, 'settings', { filterWords: words.filter(entry => entry !== word) }),
     }, word, h('span', { html: icon.close }))));
+    const backgroundUrl = h('input', { class: 'field', type: 'url', maxlength: '2048', value: settings.hostBackground || '', placeholder: 'https://', 'aria-label': t('backgroundUrl') });
+    const backgroundKind = settings.hostBackgroundKind === 'video' ? 'video' : 'image';
+    const backgroundKindPicker = segmented('lcBackgroundKind', [['image', t('backgroundImage')], ['video', t('backgroundVideo')]], backgroundKind,
+      value => run(s, 'settings', { hostBackgroundKind: value }));
+    const backgroundForm = h('form', { class: 'lc-inline', onsubmit: event => {
+      event.preventDefault();
+      const url = backgroundUrl.value.trim();
+      if (url && !/^https:\/\//i.test(url)) { toast(t('httpsBackgroundOnly')); return; }
+      run(s, 'settings', { hostBackground: url, hostBackgroundKind: backgroundKind }, t('backgroundSaved'));
+    } }, backgroundUrl, h('button', { class: 'pill-btn', type: 'submit' }, t('save')));
 
     const muted = (settings.mutedIds || []).map(byId);
     const blocked = (settings.blockedIds || []).map(byId);
@@ -254,7 +264,11 @@ export class HostControls {
       section(t('liveTitle'), titleForm),
       section(t('guests'),
         toggleRow(t('showGuestSlots'), !!settings.showGuestSlots, checked => run(s, 'settings', { showGuestSlots: checked })),
+        h('div', { class: 'lc-label' }, t('guestLayout')),
+        segmented('lcGuestLayout', [['fullscreen', t('gridLayout')], ['featured', t('featuredLayout')]], settings.layoutStyle === 'featured' ? 'featured' : 'fullscreen',
+          value => run(s, 'settings', { layoutStyle: value })),
         actionBtn(t('seats'), () => this.openGuests(), 'pill-btn wide')),
+      section(t('hostBackground'), note(t('backgroundHint')), backgroundKindPicker, backgroundForm),
       section(t('comments2'),
         segmented('lcComments', [['everyone', t('commentsEveryone')], ['followers', t('commentsFollowers')], ['off', t('commentsOff')]], settings.comments || 'everyone',
           value => run(s, 'settings', { comments: value })),

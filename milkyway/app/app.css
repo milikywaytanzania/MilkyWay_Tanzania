@@ -190,15 +190,18 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
    Capacitor-provided --safe-area-inset-bottom fallback. */
 .live-slide {
   --live-sys-inset: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
-  --live-lift: calc(8px + max(0px, var(--safe-area-inset-bottom, 0px) - env(safe-area-inset-bottom, 0px)));
+  --live-lift: calc(4px + max(0px, var(--safe-area-inset-bottom, 0px) - env(safe-area-inset-bottom, 0px)));
 }
-.live-slide.host-stage { --live-lift: calc(8px + var(--live-sys-inset)); }
+.live-slide.host-stage { --live-lift: calc(4px + var(--live-sys-inset)); }
 .live-slide { background: url("../galaxy-starfield.svg") 0 0 / 480px 560px, radial-gradient(120% 70% at 50% 0%, #2d1a78 0%, var(--midnight) 55%, var(--void) 100%); }
 .live-audio { position: fixed; left: -2px; bottom: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .live-cover { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; }
 .live-cover-title { margin: 0; font-weight: 700; max-width: 80%; text-align: center; }
 .live-badge, .live-tag { background: var(--accent); color: #fff; font-weight: 800; font-size: 11px; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px; }
+.live-host-background { position: absolute; z-index: 0; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #2d1a78, var(--midnight)); }
+.live-host-background img, .live-host-background video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .live-stage { position: absolute; inset: 0; }
+.live-host-cell > .live-cover, .live-host-cell > .live-stage { z-index: 1; }
 .live-stage .live-track { width: 100%; height: 100%; object-fit: cover; }
 .live-track.mirror { transform: scaleX(-1); }
 .live-guests { position: absolute; right: 10px; top: calc(80px + env(safe-area-inset-top)); display: grid; gap: 8px; z-index: 2; }
@@ -330,6 +333,23 @@ html[data-muted] .mute-toggle .i-sound, html:not([data-muted]) .mute-toggle .i-m
 .live-grid[data-tiles="10"] .live-host-cell { grid-column: span 2; grid-row: span 2; }
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-stage .live-track,
 .live-slide:not(.audio-live) .live-grid:not([data-tiles="1"]) .live-guest .live-track { object-fit: cover; object-position: 50% 30%; }
+/* Featured layout reserves one large host window and a vertical rail for up to eight guest seats. */
+.live-slide .live-grid[data-layout="featured"]:not([data-tiles="1"]) {
+  inset: auto 4px auto; top: var(--grid-top);
+  height: min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift)));
+  grid-template-columns: minmax(0, 2.2fr) minmax(52px, .8fr);
+  grid-template-rows: repeat(var(--side-tiles, 4), minmax(0, 1fr));
+}
+.live-slide .live-grid[data-layout="featured"] .live-guests { display: contents; }
+.live-slide .live-grid[data-layout="featured"] .live-host-cell { grid-column: 1; grid-row: 1 / -1; width: auto; height: auto; min-height: 0; }
+.live-slide .live-grid[data-layout="featured"] .live-guest {
+  grid-column: 2; width: auto; height: auto; min-width: 0; min-height: 0;
+  border-radius: 10px; border: 1px solid rgba(255,255,255,.14);
+}
+.live-slide.has-host-background .live-host-cell .live-stage .live-track {
+  position: absolute; left: 12%; top: 8%; width: 76%; height: 84%;
+  border-radius: 14px; object-fit: cover; box-shadow: 0 8px 28px rgba(0,0,0,.4);
+}
 /* With guests: comments fill the space between the grid and the bottom bar, never over the tiles. */
 .live-slide.has-guests:not(.audio-live) .live-comments {
   top: calc(var(--grid-top) + min(var(--grid-h), calc(100% - var(--grid-top) - 200px - var(--live-lift))) + 8px); max-height: none; }
