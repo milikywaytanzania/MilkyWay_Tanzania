@@ -8,6 +8,7 @@
 (() => {
   const PAGE_TIMEOUT = 3500;
   const IMAGE_LIMIT = 400;
+  const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
   const IMAGE_MAX_AGE = 24 * 60 * 60 * 1000;
   const CDN_HOSTS = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
   const STATIC = /(?:\.(?:html?|json|js|css|svg|png|jpe?g|webp|avif|gif|ico|woff2?|ttf|otf|webmanifest)|\/manifest\.json)$/i;
@@ -124,9 +125,12 @@
       const saved = await cache.match(request);
       const refresh = () => fetch(request).then(async response => {
         if (response.ok) {
+          const length = Number(response.headers.get('content-length'));
+          if (!Number.isFinite(length) || length <= 0 || length > IMAGE_MAX_BYTES) return response;
           const headers = new Headers(response.headers);
           headers.set('x-mw-saved-at', String(Date.now()));
           const body = await response.clone().blob();
+          if (body.size > IMAGE_MAX_BYTES) return response;
           await cache.put(request, new Response(body, { status: response.status, statusText: response.statusText, headers }));
           await trim(images, IMAGE_LIMIT);
         }
@@ -164,6 +168,12 @@
       if (request.method !== 'GET' || request.headers.has('Authorization') || request.headers.has('Range')) return;
       if (request.mode !== 'navigate' && ['no-store', 'reload', 'no-cache'].includes(request.cache)) return;
       const address = new URL(request.url);
+      if (address.hostname === 'wpclkhgizbvxuvbhbwzs.supabase.co'
+        && address.pathname.startsWith('/storage/v1/object/public/portfolio/')
+        && /\.(?:jpe?g|png|webp|gif|avif)$/i.test(address.pathname)) {
+        event.respondWith(optimizedImage(event));
+        return;
+      }
       if (address.origin !== self.location.origin) {
         if (CDN_HOSTS.includes(address.hostname)) event.respondWith(staleWhileRevalidate(event, cdn));
         return;

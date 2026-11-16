@@ -235,6 +235,7 @@ test('LIVE settings persist guest slots and featured host backgrounds with schem
 test('composer and post viewer support client-assisted photo slideshows with optional audio', () => {
   const compose = readFileSync(new URL('../milkyway/app/ui/compose-sheet.js', import.meta.url), 'utf8');
   const optimizer = readFileSync(new URL('../milkyway/app/core/media-optimizer.js', import.meta.url), 'utf8');
+  const imageOptimizer = readFileSync(new URL('../milkyway/app/core/media-image.js', import.meta.url), 'utf8');
   const feedView = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
   const mediaMigration = readFileSync(new URL('../supabase/migrations/20261119_milkyway_media_previews.sql', import.meta.url), 'utf8');
   const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
@@ -254,12 +255,12 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(compose, /media_preview_items:\s*mediaPreviewItems/);
   assert.match(compose, /optimizeImage\(file\)/);
   assert.match(compose, /createVideoPreview\(videoFile\)/);
-  assert.match(optimizer, /MAX_IMAGE_EDGE = 2048/);
-  assert.match(optimizer, /PREVIEW_EDGE = 640/);
-  assert.match(optimizer, /fullBlob\.size < file\.size/);
+  assert.match(imageOptimizer, /MAX_IMAGE_EDGE = 2048/);
+  assert.match(imageOptimizer, /PREVIEW_EDGE = 640/);
+  assert.match(imageOptimizer, /fullBlob\.size < file\.size/);
   assert.match(optimizer, /video\.removeAttribute\('src'\)/);
   assert.match(feedView, /post\.media\.previewItems\?\.\[0\]/);
-  assert.match(feedView, /loading = 'lazy'/);
+  assert.match(feedView, /: 'lazy'/);
   assert.match(mediaMigration, /add column if not exists media_preview_items jsonb not null default '\[\]'::jsonb/i);
   assert.match(mediaMigration, /notify pgrst, 'reload schema'/i);
   assert.match(viewer, /#stepImage\(delta\)/);
@@ -479,6 +480,28 @@ test('service worker precaches every core module', () => {
       assert.ok(sw.includes(`./app/${folder}/${file}`), `${folder}/${file} is precached`);
     }
   }
+});
+
+test('media uploads compress asynchronously and feed media is cached progressively', () => {
+  const optimizer = readFileSync(new URL('../milkyway/app/core/media-optimizer.js', import.meta.url), 'utf8');
+  const worker = readFileSync(new URL('../milkyway/app/core/media-worker.js', import.meta.url), 'utf8');
+  const imageOptimizer = readFileSync(new URL('../milkyway/app/core/media-image.js', import.meta.url), 'utf8');
+  const compose = readFileSync(new URL('../milkyway/app/ui/compose-sheet.js', import.meta.url), 'utf8');
+  const feed = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
+  const cache = readFileSync(new URL('../sw-cache.js', import.meta.url), 'utf8');
+  assert.match(optimizer, /new Worker\(new URL\('\.\/media-worker\.js'/);
+  assert.match(optimizer, /export async function optimizeVideo/);
+  assert.match(optimizer, /videoBitsPerSecond:\s*1_500_000/);
+  assert.match(worker, /optimizeImageFile\(file\)/);
+  assert.match(imageOptimizer, /new OffscreenCanvas/);
+  assert.match(compose, /optimizeVideo\(selectedVideo/);
+  assert.match(compose, /mapConcurrent\(this\.files,\s*2/);
+  assert.match(feed, /r\.img\.loading = index === this\.pager\.index \? 'eager' : 'lazy'/);
+  assert.match(viewer, /photoPreviewItems\(post\)\[index\]/);
+  assert.match(viewer, /device\.saveData \? 0 : device\.slowNetwork \? 1 : 2/);
+  assert.match(cache, /IMAGE_MAX_BYTES/);
+  assert.match(cache, /address\.pathname\.startsWith\('\/storage\/v1\/object\/public\/portfolio\/'\)/);
 });
 
 test('provider keys are configured in one place', () => {

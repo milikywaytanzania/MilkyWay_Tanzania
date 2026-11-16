@@ -3,6 +3,7 @@
 import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
 import { setImage, image as imageUrl, poster, mediaKind } from '../core/media.js';
+import { device } from '../core/device.js';
 import { actions } from '../data/feed.js';
 import { h, icon, count, ago, toast, brandMark, mediaPlaceholder } from './dom.js';
 import { openShare } from './share-sheet.js';
@@ -18,6 +19,10 @@ const photoItems = post => {
   const urls = Array.isArray(items) ? items.filter(url => typeof url === 'string' && /^https:\/\//i.test(url)).slice(0, 8) : [];
   const primary = post.media?.url || post.media_url || '';
   return urls.length ? urls : primary ? [primary] : [];
+};
+const photoPreviewItems = post => {
+  const items = post.media?.previewItems || post.media_preview_items;
+  return Array.isArray(items) ? items.filter(url => typeof url === 'string' && /^https:\/\//i.test(url)).slice(0, 8) : [];
 };
 
 export class PostViewer {
@@ -159,6 +164,8 @@ export class PostViewer {
     if (!url) return;
     this.imageIndex = index;
     const img = h('img', { class: `pv-image pv-image-${this.root.dataset.style || 'fade'}`, alt: post.caption || '', decoding: 'async', draggable: 'false', fetchpriority: 'high' });
+    const preview = photoPreviewItems(post)[index] || url;
+    const progressive = preview !== url;
     const controls = [];
     if (items.length > 1) {
       controls.push(
@@ -170,19 +177,31 @@ export class PostViewer {
     }
     this.stage.classList.add('loading');
     this.#preloadImages(items, index);
-    img.addEventListener('load', () => { if (this.post === post && this.imageIndex === index) this.stage.classList.remove('loading'); }, { once: true });
-    img.addEventListener('error', () => {
+    const showMissing = () => {
       if (this.post !== post || this.imageIndex !== index) return;
       this.stage.classList.remove('loading');
       this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
+    };
+    const loadFull = () => {
+      if (this.post !== post || this.imageIndex !== index || !this.stage.contains(img)) return;
+      setImage(img, url, fullWidth(), { quality: device.saveData ? 72 : 82, onFail: showMissing });
+    };
+    img.addEventListener('load', () => {
+      if (this.post !== post || this.imageIndex !== index) return;
+      this.stage.classList.remove('loading');
+      if (progressive) {
+        const schedule = window.requestIdleCallback || (fn => setTimeout(fn, 0));
+        schedule(loadFull);
+      }
     }, { once: true });
-    setImage(img, url, fullWidth(), {
-      quality: 85,
-      onFail: () => {
-        if (this.post !== post || this.imageIndex !== index) return;
-        this.stage.classList.remove('loading');
-        this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
-      },
+    img.addEventListener('error', () => {
+      if (this.post !== post || this.imageIndex !== index) return;
+      if (progressive) loadFull();
+      else showMissing();
+    }, { once: true });
+    setImage(img, progressive ? preview : url, progressive ? Math.min(720, fullWidth()) : fullWidth(), {
+      quality: progressive ? 65 : device.saveData ? 72 : 82,
+      onFail: progressive ? loadFull : showMissing,
     });
     img.addEventListener('click', () => { if (!this.swiped) this.stage.classList.toggle('zoomed'); });
     this.stage.replaceChildren(img, ...controls);
@@ -190,17 +209,21 @@ export class PostViewer {
 
   #preloadImages(items, index) {
     this.preloadImages ||= new Map();
-    for (const next of [index + 1, index + 2]) {
-      const url = items[next % items.length];
+    const ahead = device.saveData ? 0 : device.slowNetwork ? 1 : 2;
+    const previews = photoPreviewItems(this.post);
+    for (let offset = 1; offset <= ahead; offset++) {
+      const next = index + offset;
+      if (next >= items.length) break;
+      const url = previews[next] || items[next];
       if (!url || this.preloadImages.has(url)) continue;
       const image = new Image();
       image.decoding = 'async';
       image.fetchPriority = 'low';
-      image.src = imageUrl(url, fullWidth(), 85);
+      image.src = imageUrl(url, Math.min(720, fullWidth()), 65);
       this.preloadImages.set(url, image);
     }
     for (const [url, image] of this.preloadImages) {
-      if (!items.includes(url)) {
+      if (!items.includes(url) && !previews.includes(url)) {
         image.src = '';
         this.preloadImages.delete(url);
       }

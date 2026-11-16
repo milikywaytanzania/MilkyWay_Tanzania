@@ -1,7 +1,7 @@
 // Create photo, slideshow, video or text posts. All slideshow assistance runs locally on the device.
 import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
-import { createVideoPreview, optimizeImage, yieldToBrowser } from '../core/media-optimizer.js';
+import { createVideoPreview, optimizeImage, optimizeVideo, yieldToBrowser } from '../core/media-optimizer.js';
 import { profiles } from '../data/profiles.js';
 import { feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
@@ -11,6 +11,21 @@ const MAX_IMAGE = 10 * 1024 * 1024;
 const MAX_VIDEO = 100 * 1024 * 1024;
 const MAX_AUDIO = 25 * 1024 * 1024;
 const MAX_PHOTOS = 8;
+
+async function mapConcurrent(items, limit, run) {
+  const results = new Array(items.length);
+  let next = 0;
+  let failure;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (!failure && next < items.length) {
+      const index = next++;
+      try { results[index] = await run(items[index], index); }
+      catch (error) { failure ||= error; }
+    }
+  }));
+  if (failure) throw failure;
+  return results;
+}
 
 function publishError(error, phase) {
   const message = String(error?.message || error || '');
@@ -195,21 +210,26 @@ export class ComposeSheet {
       const mediaPreviewItems = [];
       let media_url = null;
       if (video) {
-        const videoFile = this.files[0].file;
+        const selectedVideo = this.files[0].file;
         this.message.textContent = t('optimizingMedia');
         await yieldToBrowser();
-        const posterFile = await createVideoPreview(videoFile);
-        const uploaded = await this.#upload(sb, videoFile);
+        const videoFile = await optimizeVideo(selectedVideo, { onProgress: progress => {
+          this.message.textContent = `${t('optimizingMedia')} ${progress}%`;
+        } });
+        this.message.textContent = t('uploading');
+        const [uploaded, posterFile] = await Promise.all([
+          this.#upload(sb, videoFile),
+          createVideoPreview(videoFile),
+        ]);
         media_url = uploaded.url;
         if (posterFile) {
           try { await this.#upload(sb, posterFile, `${uploaded.path}.poster.jpg`); }
           catch (error) { console.warn('[compose] video poster upload failed; the video will still publish', error); }
         }
       } else {
-        for (let index = 0; index < this.files.length; index++) {
+        const uploadedPhotos = await mapConcurrent(this.files, 2, async ({ file }, index) => {
           this.message.textContent = `${t('optimizingMedia')} ${index + 1}/${this.files.length}`;
           await yieldToBrowser();
-          const { file } = this.files[index];
           const optimized = await optimizeImage(file);
           const [uploaded, preview] = await Promise.all([
             this.#upload(sb, optimized.full),
@@ -218,6 +238,9 @@ export class ComposeSheet {
               return null;
             }) : Promise.resolve(null),
           ]);
+          return { uploaded, preview };
+        });
+        for (const { uploaded, preview } of uploadedPhotos) {
           mediaItems.push(uploaded.url);
           mediaPreviewItems.push(preview?.url || uploaded.url);
           media_url ||= uploaded.url;

@@ -192,7 +192,7 @@ export class FeedView {
     return slide;
   }
 
-  #bind(slide, post) {
+  #bind(slide, post, index = this.pager.index) {
     slide._post = post;
     const r = slide._refs;
     const type = mediaKind(post);
@@ -216,9 +216,9 @@ export class FeedView {
     if (type === 'image') {
       r.img.hidden = false;
       r.img.alt = post.caption || '';
-      r.img.loading = 'lazy';
+      r.img.loading = index === this.pager.index ? 'eager' : 'lazy';
       r.img.decoding = 'async';
-      r.img.fetchPriority = 'auto';
+      r.img.fetchPriority = index === this.pager.index ? 'high' : 'low';
       const preview = post.media.previewItems?.[0] || post.media.url;
       setImage(r.img, preview, Math.min(720, device.mediaWidth), { quality: device.saveData ? 55 : 66, onFail: () => { if (slide._post !== post) return; r.img.hidden = true; r.missing.hidden = false; } });
     }
