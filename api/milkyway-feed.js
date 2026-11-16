@@ -17,8 +17,8 @@ const clamp = (value, min, max, fallback) => {
 };
 const validTime = value => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
 const quiet = promise => promise.catch(() => null);
-const POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,created_at';
-const LEGACY_POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,created_at';
+const POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,scheduled_at,created_at';
+const LEGACY_POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,scheduled_at,created_at';
 // Posts store media_type as 'video' / 'image', a MIME type ('video/mp4', 'image/jpeg') or nothing at all (older posts),
 // so the file extension decides when the type is missing or unknown.
 const VIDEO_FILE = /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i;
@@ -43,6 +43,7 @@ async function page({ ctx, query }) {
   const scope = query.scope === 'following' && me ? 'following' : 'foryou';
   // Over-fetch a little so privacy filtering rarely leaves a short page.
   const filters = [`select=${POST_FIELDS}`, `order=created_at.desc`, `limit=${limit * 2}`];
+  filters.push(`or=(scheduled_at.is.null,scheduled_at.lte.${encodeURIComponent(new Date().toISOString())})`);
   if (validTime(query.before)) filters.push(`created_at=lt.${encodeURIComponent(new Date(query.before).toISOString())}`);
   // Default: every post (text posts render as cards). media=video → videos only, media=visual → photos + videos.
   if (query.media === 'video') filters.push('media_type=ilike.video*');

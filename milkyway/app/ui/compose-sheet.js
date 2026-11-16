@@ -47,6 +47,8 @@ export class ComposeSheet {
       h('option', { value: 'slide' }, t('styleSlide')));
     this.assist = h('button', { class: 'pill-btn', type: 'button', onclick: () => this.#autoStyle() }, t('autoStyle'));
     this.audioPreview = h('div', { class: 'compose-audio-preview' });
+    this.scheduleToggle = h('input', { type: 'checkbox', class: 'lc-switch', role: 'switch', onchange: () => this.#paintSchedule() });
+    this.scheduleDate = h('input', { class: 'field', type: 'datetime-local', hidden: true, 'aria-label': t('studioScheduleTime') });
     this.message = h('p', { class: 'muted', role: 'status' });
     this.submit = h('button', { class: 'pill-btn hot wide', type: 'submit' }, t('publish'));
     this.sheet.body.append(h('form', { class: 'stack', onsubmit: event => { event.preventDefault(); this.#publish(); } },
@@ -55,10 +57,28 @@ export class ComposeSheet {
       h('div', { class: 'compose-assist' }, this.assist, this.style),
       h('button', { class: 'pill-btn wide', type: 'button', onclick: () => this.audioInput.click() }, t('attachAudio')),
       this.audioInput, this.audioPreview,
+      h('label', { class: 'lc-toggle nova-toggle' }, h('span', {}, t('studioSchedulePost'), h('small', { class: 'muted' }, t('studioScheduleHint'))), this.scheduleToggle),
+      this.scheduleDate,
       this.caption, this.submit, this.message));
   }
 
-  open() { this.message.textContent = ''; this.sheet.open(); }
+  open() {
+    this.message.textContent = '';
+    this.scheduleToggle.checked = false;
+    this.scheduleDate.value = '';
+    const earliest = new Date(Date.now() + 5 * 60 * 1000);
+    earliest.setSeconds(0, 0);
+    const latest = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    this.scheduleDate.min = new Date(earliest.getTime() - earliest.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    this.scheduleDate.max = new Date(latest.getTime() - latest.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    this.#paintSchedule();
+    this.sheet.open();
+  }
+
+  #paintSchedule() {
+    this.scheduleDate.hidden = !this.scheduleToggle.checked;
+    this.submit.textContent = this.scheduleToggle.checked ? t('studioSchedulePost') : t('publish');
+  }
 
   #releaseMedia() {
     for (const entry of this.files) URL.revokeObjectURL(entry.url);
@@ -154,6 +174,17 @@ export class ComposeSheet {
     const caption = this.caption.value.trim();
     if (!caption && !this.files.length) { this.message.textContent = t('writeOrPick'); return; }
     if (!auth.signedIn()) { this.message.textContent = t('signInToContinue'); return; }
+    let scheduledAt = null;
+    if (this.scheduleToggle.checked) {
+      const scheduledTime = Date.parse(this.scheduleDate.value);
+      const earliest = Date.now() + 5 * 60 * 1000;
+      const latest = Date.now() + 365 * 24 * 60 * 60 * 1000;
+      if (!Number.isFinite(scheduledTime) || scheduledTime < earliest || scheduledTime > latest) {
+        this.message.textContent = t('studioScheduleInvalid');
+        return;
+      }
+      scheduledAt = new Date(scheduledTime).toISOString();
+    }
     this.submit.disabled = true; this.message.textContent = t('uploading');
     let phase = 'connecting to Supabase';
     try {
@@ -201,12 +232,16 @@ export class ComposeSheet {
       const { error } = await sb.from('mw_posts').insert({
         author_id: auth.userId, author_name, caption: caption || null, media_url, media_type,
         media_items: mediaItems, media_preview_items: mediaPreviewItems, audio_url, slideshow_style: this.style.value,
+        scheduled_at: scheduledAt,
       });
       if (error) throw error;
       this.caption.value = ''; this.#releaseMedia(); this.#pickAudio(null);
       this.preview.replaceChildren(); this.message.textContent = '';
       this.sheet.close();
-      toast(t('published'));
+      toast(scheduledAt ? t('studioScheduledSuccess') : t('published'));
+      this.scheduleToggle.checked = false;
+      this.scheduleDate.value = '';
+      this.#paintSchedule();
       for (const scope of ['foryou', 'following']) feed(scope).refresh().catch(() => {});
       this.onPublished?.();
     } catch (error) {

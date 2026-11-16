@@ -1,4 +1,4 @@
-// Nova menu: privacy, gift coins, Masiyatunda Studio, email / phone / password, online status and language.
+// Nova menu: privacy, gift coins, MilkyWay Studio, email / phone / password, online status and language.
 // Everything is saved as the signed-in user: Supabase Auth for email and password, the site API for the rest.
 import { config } from '../config.js';
 import { t, lang, languages, setLanguage } from '../core/i18n.js';
@@ -170,7 +170,7 @@ async function renderPlayCoinPackages(container, balance, note) {
 export class NovaMenu {
   constructor({ onSignedOut, openStudioPost } = {}) {
     this.hooks = { onSignedOut, openStudioPost };
-    this.sheet = new Sheet({ title: t('menu'), className: 'nova-sheet' });
+    this.sheet = new Sheet({ title: t('menu'), className: 'nova-sheet', onClose: () => this.studioView?.stop() });
     this.content = h('div', { class: 'nova-menu' });
     this.sheet.body.append(this.content);
     presence.subscribe(() => this.#paintPresence());
@@ -207,6 +207,7 @@ export class NovaMenu {
 
   // ---- Main menu -----------------------------------------------------------------------------------------
   #home() {
+    this.studioView?.stop();
     this.sheet.title = t('menu');
     const person = { id: auth.userId, name: this.profile?.name || auth.name, avatar: this.profile?.avatar || '' };
     this.onlineBadge = h('span', {});
@@ -304,6 +305,7 @@ export class NovaMenu {
 
   // ---- Gift coins -------------------------------------------------------------------------------------------
   async #wallet() {
+    this.studioView?.stop();
     const box = h('div', { class: 'stack' }, h('p', { class: 'muted center' }, t('loading')));
     this.#screen(t('giftBalance'), box);
     try {
@@ -314,6 +316,13 @@ export class NovaMenu {
       const balance = h('b', { class: 'nova-big' }, count(Number(info?.coins) || 0));
       const playTopups = h('div', { class: 'play-topups', hidden: true });
       const received = Array.isArray(info?.received) ? info.received : [];
+      const topups = Array.isArray(info?.topups) ? info.topups : [];
+      const withdrawals = Array.isArray(info?.withdrawals) ? info.withdrawals : [];
+      const transactions = [
+        ...received.map(item => ({ kind: t('giftsReceived'), icon: icons.get(item.gift) || '🎁', detail: item.from || 'MilkyWay', at: item.at, coins: Number(item.earned) || 0 })),
+        ...topups.map(item => ({ kind: t('topUp'), icon: '⬇️', detail: t(`studioStatus_${item.status}`), at: item.at, coins: Number(item.coins) || 0 })),
+        ...withdrawals.map(item => ({ kind: t('studioWithdrawal'), icon: '⬆️', detail: t(`studioStatus_${item.status}`), at: item.at, coins: -(Number(item.coins) || 0) })),
+      ].sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0)).slice(0, 60);
       box.replaceChildren(
         h('div', { class: 'nova-stats' },
           h('div', {}, h('small', { class: 'muted' }, t('balance')), h('span', {}, '🪙 ', balance)),
@@ -332,12 +341,12 @@ export class NovaMenu {
           } catch (error) { fail(note, error); }
         } }, code, h('button', { class: 'pill-btn hot', type: 'submit' }, t('topUp'))),
         note,
-        h('p', { class: 'nova-section' }, `${t('giftsReceived')} (${received.length})`),
-        received.length
-          ? h('div', { class: 'nova-list' }, ...received.map(item => h('div', { class: 'nova-list-row' },
-            h('span', { class: 'gift-icon' }, icons.get(item.gift) || '🎁'),
-            h('div', { class: 'chat-text' }, h('b', {}, item.from || 'MilkyWay'), h('span', { class: 'muted' }, ago(item.at))),
-            h('em', { class: 'nova-coins' }, `+${count(Number(item.earned) || 0)}`))))
+        h('p', { class: 'nova-section' }, t('studioTransactions')),
+        transactions.length
+          ? h('div', { class: 'nova-list' }, ...transactions.map(item => h('div', { class: 'nova-list-row' },
+            h('span', { class: 'gift-icon' }, item.icon),
+            h('div', { class: 'chat-text' }, h('b', {}, item.kind), h('span', { class: 'muted' }, `${item.detail} · ${ago(item.at)}`)),
+            h('em', { class: 'nova-coins' }, `${item.coins > 0 ? '+' : ''}${count(item.coins)}`))))
           : h('p', { class: 'muted center' }, t('empty')));
       await renderPlayCoinPackages(playTopups, balance, note);
     } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
@@ -375,40 +384,20 @@ export class NovaMenu {
     } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
   }
 
-  // ---- Masiyatunda Studio -----------------------------------------------------------------------------------
+  // ---- MilkyWay Studio -------------------------------------------------------------------------------------
   async #studio() {
-    const box = h('div', { class: 'stack' }, h('p', { class: 'muted center' }, t('loading')));
-    this.#screen(t('studio'), h('p', { class: 'muted center' }, t('studioHint')), box);
-    try {
-      const sb = await supabase();
-      const me = auth.userId;
-      const head = { count: 'exact', head: true };
-      const [posts, followers, following, wallet] = await Promise.all([
-        sb.from('mw_posts').select('id,caption,media_url,media_type,created_at', { count: 'exact' }).eq('author_id', me).order('created_at', { ascending: false }).limit(12),
-        sb.from('mw_follows').select('follower_id', head).eq('following_id', me),
-        sb.from('mw_follows').select('following_id', head).eq('follower_id', me),
-        api(`${config.api.wallet}?action=wallet`, { timeout: 12000 }).catch(() => ({})),
-      ]);
-      const list = posts.data || [];
-      const ids = list.map(post => post.id);
-      const likesRows = ids.length ? (await sb.from('mw_signals').select('post_id').in('post_id', ids).eq('kind', 'light').limit(5000)).data || [] : [];
-      const likesByPost = new Map();
-      likesRows.forEach(item => likesByPost.set(item.post_id, (likesByPost.get(item.post_id) || 0) + 1));
-      const stat = (label, value) => h('div', {}, h('small', { class: 'muted' }, label), h('b', { class: 'nova-big' }, count(value)));
-      box.replaceChildren(
-        h('div', { class: 'nova-stats four' },
-          stat(t('posts'), posts.count ?? list.length), stat(t('followers'), followers.count || 0),
-          stat(t('totalLikes'), likesRows.length), stat(t('earned'), Number(wallet?.earned) || 0)),
-        h('div', { class: 'nova-stats' },
-          stat(t('followingCount'), following.count || 0), stat(t('giftsReceived'), Array.isArray(wallet?.received) ? wallet.received.length : 0)),
-        h('p', { class: 'nova-section' }, t('recentPosts')),
-        list.length
-          ? h('div', { class: 'nova-list' }, ...list.map(post => h('div', { class: 'nova-list-row' },
-            h('span', { class: 'nova-kind', 'aria-hidden': 'true' }, /video/.test(post.media_type || '') ? '🎬' : post.media_url ? '🖼' : '✍️'),
-            h('div', { class: 'chat-text' }, h('b', {}, (post.caption || t('post')).slice(0, 60)), h('span', { class: 'muted' }, ago(post.created_at))),
-            h('em', { class: 'nova-likes' }, h('span', { html: icon.heart }), count(likesByPost.get(post.id) || 0)))))
-          : h('p', { class: 'muted center' }, t('noPostsYet')));
-    } catch (error) { box.replaceChildren(h('p', { class: 'muted center' }, error?.message || t('retry'))); }
+    this.#screen(t('studio'));
+    const { StudioView } = await import('./studio-view.js');
+    this.studioView ||= new StudioView({
+      container: this.content,
+      setTitle: title => { this.sheet.title = title; },
+      onBack: () => this.#home(),
+      onWallet: () => this.#wallet(),
+      onGoLive: () => { this.sheet.close(); document.querySelector('[data-nav="live"]')?.click(); },
+      onCreatePost: () => { this.sheet.close(); this.hooks.openStudioPost?.(); },
+      onOpenPost: post => { this.sheet.close(); this.hooks.openStudioPost?.(post); },
+    });
+    this.studioView.open();
   }
 
   // ---- Email -----------------------------------------------------------------------------------------------

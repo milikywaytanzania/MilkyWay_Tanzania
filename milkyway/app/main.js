@@ -32,7 +32,12 @@ const giftTray = lazy(() => import('./ui/gift-tray.js').then(m => new m.GiftTray
 })));
 const inboxView = lazy(() => import('./ui/inbox-view.js').then(m => new m.InboxView()));
 const callView = lazy(() => import('./ui/call-view.js').then(m => m.calls));
-const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu()));
+const novaMenu = lazy(() => import('./ui/settings-view.js').then(m => new m.NovaMenu({
+  openStudioPost: post => {
+    if (!post) { openCreate(); return; }
+    postViewer().then(viewer => viewer.open([post], 0, { own: true }));
+  },
+})));
 const profileView = lazy(() => import('./ui/profile-view.js').then(m => new m.ProfileView({
   requireLogin, openCreate, openComments: post => commentsSheet().then(sheet => sheet.open(post)),
   openMenu: profile => novaMenu().then(menu => menu.open(profile)),

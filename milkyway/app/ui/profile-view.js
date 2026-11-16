@@ -14,7 +14,7 @@ import { isOwnerAccount } from './admin-view.js';
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
 
 async function loadProfilePosts(sb, id) {
-  const fields = 'id,author_id,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,created_at';
+  const fields = 'id,author_id,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,scheduled_at,created_at';
   let result = await sb.from('mw_posts').select(fields).eq('author_id', id).order('created_at', { ascending: false }).limit(30);
   if (result.error && /media_preview_items/i.test(result.error.message || '')) {
     result = await sb.from('mw_posts').select(fields.replace(',media_preview_items', '')).eq('author_id', id).order('created_at', { ascending: false }).limit(30);
@@ -99,6 +99,7 @@ export class ProfileView {
 
   async #load(id) {
     const token = ++this.token;
+    this.mode = 'profile';
     try {
       const sb = await supabase();
       const head = { count: 'exact', head: true };
@@ -113,10 +114,75 @@ export class ProfileView {
       const person = { id, name: row.display_name || profiles.peek(id)?.name || (this.own ? auth.name : 'MilkyWay'), username: row.username || '', avatar: row.avatar_url || '', bio: row.bio || '', private: Boolean(row.is_private) };
       profiles.prime([{ id, name: person.name, username: person.username, avatar: person.avatar }]);
       if (!this.own) this.sheet.title = person.name;
-      this.#render({ profile: person, followers: followers.count || 0, following: following.count || 0, posts: posts.data || [] });
+      const { data: pin } = await quiet(sb.from('mw_creator_pins').select('post_id').eq('creator_id', id).maybeSingle());
+      const profilePosts = posts.data || [];
+      if (pin?.post_id) profilePosts.sort((a, b) => Number(b.id === pin.post_id) - Number(a.id === pin.post_id));
+      this.#render({ profile: person, followers: followers.count || 0, following: following.count || 0, posts: profilePosts });
+      this.#loadBusiness(person, token);
     } catch {
       if (token === this.token) this.#render({ profile: profiles.peek(id) || { id }, error: true });
     }
+  }
+
+  async #loadBusiness(profile, token) {
+    let section;
+    try {
+      const sb = await supabase();
+      const { data, error } = await sb.from('mw_creator_services')
+        .select('id,title,category,description,pricing')
+        .eq('creator_id', profile.id).eq('is_published', true).order('created_at', { ascending: false });
+      if (error) throw error;
+      if (token !== this.token || this.mode !== 'profile' || !data?.length) return;
+      section = h('section', { class: 'mw-profile-services' },
+        h('h3', {}, t('studioPortfolio')),
+        h('div', { class: 'mw-studio-service-list' }, ...data.map(service => this.#profileService(service, profile))));
+    } catch (error) {
+      if (token !== this.token || this.mode !== 'profile') return;
+      section = h('section', { class: 'mw-profile-services' },
+        h('h3', {}, t('studioPortfolio')),
+        h('p', { class: 'muted', role: 'status' }, `${t('studioServiceUnavailable')}: ${error?.message || t('retry')}`));
+    }
+    if (token === this.token && this.mode === 'profile' && section) this.content.append(section);
+  }
+
+  #profileService(service, profile) {
+    const card = h('article', { class: 'mw-studio-service-card' },
+      h('div', {}, h('small', { class: 'mw-studio-eyebrow' }, service.category),
+        h('h4', {}, service.title), h('p', { class: 'muted' }, service.description),
+        service.pricing ? h('b', { class: 'mw-studio-price' }, service.pricing) : null));
+    if (this.own || !auth.signedIn()) return card;
+    const button = h('button', { class: 'pill-btn hot', type: 'button', onclick: () => {
+      const note = h('p', { class: 'muted', role: 'status' });
+      const preferredAt = h('input', { class: 'field', type: 'datetime-local', 'aria-label': t('studioPreferredDate') });
+      const inquiryText = h('textarea', { class: 'field area', maxlength: '2000', minlength: '10', required: true, placeholder: t('studioInquiryMessage') });
+      const submit = h('button', { class: 'pill-btn hot', type: 'submit' }, t('studioSendInquiry'));
+      const form = h('form', { class: 'mw-studio-service-request', onsubmit: async event => {
+        event.preventDefault();
+        submit.disabled = true;
+        try {
+          const sb = await supabase();
+          const { error } = await sb.from('mw_service_inquiries').insert({
+            service_id: service.id,
+            creator_id: profile.id,
+            requester_id: auth.userId,
+            client_name: auth.name.slice(0, 80),
+            message: inquiryText.value.trim(),
+            preferred_at: preferredAt.value ? new Date(preferredAt.value).toISOString() : null,
+          });
+          if (error) throw error;
+          note.textContent = t('studioInquirySent');
+          submit.remove();
+          toast(t('studioInquirySent'));
+        } catch (error) {
+          note.textContent = error?.message || t('retry');
+          submit.disabled = false;
+        }
+      } }, preferredAt, inquiryText, submit, note);
+      card.replaceChildren(card.firstElementChild, form);
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } }, t('studioRequestService'));
+    card.append(button);
+    return card;
   }
 
   #render({ profile, followers = 0, following = 0, posts = [], loading = false, error = false }) {
@@ -177,6 +243,7 @@ export class ProfileView {
   }
 
   #edit(profile) {
+    this.mode = 'edit';
     const name = h('input', { class: 'field', maxlength: '60', value: profile.name || '', placeholder: t('displayName'), required: true });
     const username = h('input', { class: 'field', maxlength: '30', value: profile.username || '', placeholder: t('username'), autocapitalize: 'off', spellcheck: 'false' });
     const bio = h('textarea', { class: 'field area', maxlength: '300', placeholder: t('bio') });
@@ -223,6 +290,9 @@ function tile(post, { open, menu }) {
     node.append(img);
   } else {
     node.append(h('p', {}, (post.caption || '').slice(0, 140)));
+  }
+  if (post.scheduled_at && Date.parse(post.scheduled_at) > Date.now()) {
+    node.append(h('span', { class: 'mw-profile-scheduled' }, t('studioScheduled')));
   }
   if (menu) {
     node.append(h('button', { class: 'tile-more', type: 'button', 'aria-label': t('postOptions'), onclick: event => { event.stopPropagation(); menu(); } }, '⋯'));

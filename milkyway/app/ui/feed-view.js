@@ -4,7 +4,7 @@
 //  - Double-tap to like (with burst), tap to pause / unmute (videos) or open full size (photos),
 //    rail: profile+follow, like, comments, save, gift, share.
 import { config } from '../config.js';
-import { auth } from '../core/net.js';
+import { auth, supabase } from '../core/net.js';
 import { bus, idle } from '../core/events.js';
 import { device } from '../core/device.js';
 import { setImage, poster, mediaKind } from '../core/media.js';
@@ -42,6 +42,7 @@ export class FeedView {
         if (index > 0) this.interacted = true;
         this.#trackProgress();
         const item = this.pager.items[index];
+        this.#trackView(item);
         if (item?.kind === 'ad') adImpression(item.ad);
       },
       onNearEnd: () => this.source?.more(),
@@ -110,6 +111,26 @@ export class FeedView {
     if (this.pager.items.length) return this.#setStatus(null);
     if (navigator.onLine === false) return this.#setStatus('offline');
     this.#setStatus(source?.source.error ? 'feedLoadFailed' : this.scope === 'following' ? 'emptyFollowing' : 'empty');
+  }
+
+  #trackView(post) {
+    const viewerId = auth.userId;
+    if (!viewerId || !post?.id || post.kind) return;
+    const key = `${viewerId}:${post.id}`;
+    this.viewedPosts ||= new Set();
+    if (this.viewedPosts.has(key)) return;
+    this.viewedPosts.add(key);
+    supabase().then(sb => sb.from('mw_post_views')
+      .upsert({ post_id: post.id, viewer_id: viewerId }, { onConflict: 'post_id,viewer_id', ignoreDuplicates: true }))
+      .then(({ error }) => {
+        if (!error) return;
+        this.viewedPosts.delete(key);
+        console.warn('[feed] post view could not be recorded', error);
+      })
+      .catch(error => {
+        this.viewedPosts.delete(key);
+        console.warn('[feed] post view could not be recorded', error);
+      });
   }
 
   #setStatus(kind) {
