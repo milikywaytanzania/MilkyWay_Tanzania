@@ -31,7 +31,7 @@ async function call(query) {
 
 test('feed page returns ready-to-render posts with counts and hides private and audience-restricted posts', async () => {
   const rows = [
-    { id: P(1), author_id: A, author_name: 'Asha', caption: 'hi', media_url: 'https://x/v.mp4', media_type: 'video', created_at: '2026-11-14T10:00:00Z' },
+    { id: P(1), author_id: A, author_name: 'Asha', caption: 'hi', media_url: 'https://x/v.mp4', media_type: 'video', media_items: [], audio_url: 'https://x/music.mp3', slideshow_style: 'cinema', created_at: '2026-11-14T10:00:00Z' },
     { id: P(2), author_id: B, author_name: 'Bo', caption: 'secret', media_url: null, media_type: null, created_at: '2026-11-14T09:00:00Z' },
     { id: P(3), author_id: A, author_name: 'Asha', caption: 'only me', media_url: null, media_type: null, created_at: '2026-11-14T08:00:00Z' },
   ];
@@ -49,7 +49,7 @@ test('feed page returns ready-to-render posts with counts and hides private and 
   assert.deepEqual(payload.posts.map(post => post.id), [P(1)]);
   assert.deepEqual(payload.posts[0], {
     id: P(1), author: { id: A, name: 'Asha K', username: 'asha', avatar: 'https://x/a.jpg' }, caption: 'hi',
-    media: { url: 'https://x/v.mp4', type: 'video' }, createdAt: '2026-11-14T10:00:00Z', likes: 2, comments: 1, liked: false, saved: false,
+    media: { url: 'https://x/v.mp4', type: 'video', items: [], audioUrl: 'https://x/music.mp3', style: 'cinema' }, createdAt: '2026-11-14T10:00:00Z', likes: 2, comments: 1, liked: false, saved: false,
   });
   assert.equal(payload.next, null);
   // One posts read, then every lookup in parallel — never per-post requests.
@@ -134,6 +134,31 @@ test('LIVE settings persist guest slots and featured host backgrounds with schem
   assert.match(liveView, /dataset\.layout = layoutStyle/);
   assert.match(liveView, /live-host-background/);
   assert.match(css, /grid-template-columns: minmax\(0, 2\.2fr\) minmax\(52px, \.8fr\)/);
+});
+
+test('composer and post viewer support client-assisted photo slideshows with optional audio', () => {
+  const compose = readFileSync(new URL('../milkyway/app/ui/compose-sheet.js', import.meta.url), 'utf8');
+  const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
+  const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
+  const liveView = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
+  const giftTray = readFileSync(new URL('../milkyway/app/ui/gift-tray.js', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261117_milkyway_post_slideshows.sql', import.meta.url), 'utf8');
+  const repair = readFileSync(new URL('../supabase/milkyway-schema-repair.sql', import.meta.url), 'utf8');
+  assert.match(compose, /multiple:\s*true/);
+  assert.match(compose, /MAX_PHOTOS = 8/);
+  assert.match(compose, /createImageBitmap/);
+  assert.match(compose, /media_items:\s*mediaItems,[\s\S]*audio_url,[\s\S]*slideshow_style/);
+  assert.match(viewer, /#stepImage\(delta\)/);
+  assert.match(viewer, /#renderSoundtrack\(post\)/);
+  assert.match(viewer, /#toggleSlideshow/);
+  assert.match(profile, /media_items,audio_url,slideshow_style/);
+  assert.match(migration, /add column if not exists media_items jsonb/i);
+  assert.match(migration, /add column if not exists audio_url text/i);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+  assert.match(repair, /supabase\/migrations\/20261117_milkyway_post_slideshows.sql/);
+  assert.match(liveView, /data-act': 'gift'[\s\S]*html: icon\.gift/);
+  assert.match(liveView, /openGifts\(\{ room: live\.room, to: live\.host, session: this\.session \}\)/);
+  assert.match(giftTray, /this\.target\.session\.gift\(key\)/);
 });
 
 test('app shell has no render-blocking scripts and loads the core as a module', () => {

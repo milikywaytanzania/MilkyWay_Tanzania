@@ -115,11 +115,12 @@ export class FeedView {
   #createSlide() {
     const video = h('video', { playsinline: true, 'webkit-playsinline': true, loop: true, muted: true, preload: 'none', disablepictureinpicture: true, disableremoteplayback: true });
     const img = h('img', { alt: '', decoding: 'async', draggable: 'false' });
+    const slideshowBadge = h('span', { class: 'slideshow-badge', hidden: true, 'aria-hidden': 'true' }, '▧');
     const text = h('div', { class: 'text-card' });
     const paused = h('span', { class: 'paused-badge', html: icon.play, hidden: true });
     const missing = mediaPlaceholder(t('imageUnavailable'));
     missing.hidden = true;
-    const media = h('div', { class: 'media', 'data-act': 'media' }, video, img, text, missing, paused);
+    const media = h('div', { class: 'media', 'data-act': 'media' }, video, img, text, missing, paused, slideshowBadge);
     const avatarNode = h('span', { class: 'avatar' });
     const follow = h('span', { class: 'follow-plus', 'data-act': 'follow', role: 'button', 'aria-label': t('follow'), html: icon.plus });
     const rail = (act, svg, label) => h('button', { class: `rail-btn rail-${act}`, type: 'button', 'data-act': act, 'aria-label': label }, h('span', { class: 'rail-icon', html: svg }), h('b', {}, ''));
@@ -142,7 +143,7 @@ export class FeedView {
       h('aside', { class: 'rail' }, h('div', { class: 'rail-author', 'data-act': 'profile' }, avatarNode, follow), like, comment, save, gift, share),
       h('div', { class: 'meta' }, name, caption, adBar), suggest,
       h('div', { class: 'progress', 'aria-hidden': 'true' }, bar));
-    slide._refs = { video, img, text, paused, missing, avatarNode, follow, like, comment, save, gift, share, name, caption, bar, adBar, suggest };
+    slide._refs = { video, img, text, paused, missing, slideshowBadge, avatarNode, follow, like, comment, save, gift, share, name, caption, bar, adBar, suggest };
     // Portrait media fills the screen; landscape media is letterboxed instead of cropped.
     const fit = (w, h) => { if (w && h) slide.dataset.fit = h >= w * 1.2 ? 'cover' : 'contain'; };
     video.addEventListener('loadedmetadata', () => fit(video.videoWidth, video.videoHeight));
@@ -173,6 +174,8 @@ export class FeedView {
     r.text.hidden = type !== 'text';
     r.paused.hidden = true;
     r.missing.hidden = true;
+    r.slideshowBadge.hidden = (post.media?.items?.length || post.media_items?.length || 0) < 2;
+    r.slideshowBadge.textContent = `▧ ${post.media?.items?.length || post.media_items?.length || 0}`;
     delete slide.dataset.fit;
     r.bar.style.transform = 'scaleX(0)';
     if (type === 'video') {

@@ -97,7 +97,7 @@ export class ProfileView {
         quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle()),
         quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
         quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        quiet(sb.from('mw_posts').select('id,author_id,caption,media_url,media_type,created_at').eq('author_id', id).order('created_at', { ascending: false }).limit(30)),
+        quiet(sb.from('mw_posts').select('id,author_id,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at').eq('author_id', id).order('created_at', { ascending: false }).limit(30)),
       ]);
       if (token !== this.token) return;
       const row = profile.data || {};

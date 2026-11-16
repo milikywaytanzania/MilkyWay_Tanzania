@@ -40,7 +40,7 @@ async function page({ ctx, query }) {
   const limit = clamp(query.limit, 4, 30, 12);
   const scope = query.scope === 'following' && me ? 'following' : 'foryou';
   // Over-fetch a little so privacy filtering rarely leaves a short page.
-  const filters = [`select=id,author_id,author_name,caption,media_url,media_type,created_at`, `order=created_at.desc`, `limit=${limit * 2}`];
+  const filters = [`select=id,author_id,author_name,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at`, `order=created_at.desc`, `limit=${limit * 2}`];
   if (validTime(query.before)) filters.push(`created_at=lt.${encodeURIComponent(new Date(query.before).toISOString())}`);
   // Default: every post (text posts render as cards). media=video → videos only, media=visual → photos + videos.
   if (query.media === 'video') filters.push('media_type=ilike.video*');
@@ -102,7 +102,12 @@ async function page({ ctx, query }) {
         avatar: profile?.avatar_url || '',
       },
       caption: row.caption || '',
-      media: row.media_url ? { url: row.media_url, type: mediaKind(row.media_url, row.media_type) } : null,
+      media: row.media_url ? {
+        url: row.media_url, type: mediaKind(row.media_url, row.media_type),
+        items: Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
+        audioUrl: typeof row.audio_url === 'string' && /^https:\/\//i.test(row.audio_url) ? row.audio_url : '',
+        style: ['fade', 'zoom', 'cinema'].includes(row.slideshow_style) ? row.slideshow_style : 'fade',
+      } : null,
       createdAt: row.created_at,
       likes: likes.get(row.id) || 0,
       comments: comments.get(row.id) || 0,

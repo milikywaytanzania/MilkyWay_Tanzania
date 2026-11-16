@@ -12,6 +12,12 @@ const SWIPE_PX = 60;
 export const postKind = mediaKind;
 // Full-size photos: as sharp as the screen can show (up to 2560 px), straight from the original if the CDN fails.
 const fullWidth = () => Math.min(2560, Math.round(Math.max(window.innerWidth || 720, window.innerHeight || 720) * Math.min(window.devicePixelRatio || 1, 2.5)));
+const photoItems = post => {
+  const items = post.media?.items || post.media_items;
+  const urls = Array.isArray(items) ? items.filter(url => typeof url === 'string' && /^https:\/\//i.test(url)).slice(0, 8) : [];
+  const primary = post.media?.url || post.media_url || '';
+  return urls.length ? urls : primary ? [primary] : [];
+};
 
 export class PostViewer {
   constructor({ requireLogin, openComments, onDeleted } = {}) {
@@ -19,6 +25,7 @@ export class PostViewer {
     this.stage = h('div', { class: 'pv-media' });
     this.caption = h('p', { class: 'pv-caption' });
     this.when = h('small', { class: 'muted' });
+    this.sound = h('div', { class: 'pv-sound' });
     this.likeBtn = h('button', { class: 'pv-act', type: 'button', 'aria-label': t('like') }, h('span', { html: icon.heart }), h('b', {}, '0'));
     this.commentBtn = h('button', { class: 'pv-act', type: 'button', 'aria-label': t('comments') }, h('span', { html: icon.comment }), h('b', {}, '0'));
     this.shareBtn = h('button', { class: 'pv-act', type: 'button', 'aria-label': t('share') }, h('span', { html: icon.share }), h('b', {}, ''));
@@ -28,7 +35,7 @@ export class PostViewer {
     this.closeBtn = h('button', { class: 'icon-btn pv-close', type: 'button', 'aria-label': t('close'), html: icon.close });
     this.root = h('div', { class: 'pv-layer', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('post'), hidden: true, tabindex: '-1' },
       h('div', { class: 'pv-frame' }, this.stage, brandMark(), this.prevBtn, this.nextBtn, this.closeBtn),
-      h('div', { class: 'pv-info' }, this.caption, this.when,
+      h('div', { class: 'pv-info' }, this.caption, this.when, this.sound,
         h('div', { class: 'pv-actions' }, this.likeBtn, this.commentBtn, this.shareBtn, this.deleteBtn)));
     document.body.append(this.root);
 
@@ -52,7 +59,10 @@ export class PostViewer {
       startX = null;
       this.swiped = Math.abs(dx) > 10 || Math.abs(dy) > 10;
       if (this.stage.classList.contains('zoomed')) return; // panning a zoomed photo
-      if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy)) this.step(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy)) {
+        if (this.post && postKind(this.post) === 'image' && photoItems(this.post).length > 1) this.#stepImage(dx < 0 ? 1 : -1);
+        else this.step(dx < 0 ? 1 : -1);
+      }
       else if (dy > SWIPE_PX * 1.5 && Math.abs(dy) > Math.abs(dx)) this.close();
     });
   }
@@ -75,9 +85,11 @@ export class PostViewer {
   close() {
     if (this.root.hidden) return;
     this.#stopVideo();
+    this.#stopSlideshow();
     this.root.classList.remove('open');
     this.root.hidden = true;
     this.stage.replaceChildren();
+    this.sound.replaceChildren();
     this.stage.classList.remove('zoomed', 'loading');
     this.returnFocus?.focus?.({ preventScroll: true });
     const done = this.onClose;
@@ -93,11 +105,13 @@ export class PostViewer {
 
   #show(index) {
     this.#stopVideo();
+    this.#stopSlideshow();
     this.stage.classList.remove('zoomed', 'loading');
     this.index = index;
     const post = this.post = this.posts[index];
     const kind = postKind(post);
     const url = post.media_url || post.media?.url || '';
+    this.root.dataset.style = ['fade', 'zoom', 'cinema'].includes(post.media?.style || post.slideshow_style) ? (post.media?.style || post.slideshow_style) : 'fade';
     this.root.dataset.kind = kind;
     if (kind === 'video') {
       const video = h('video', { controls: true, playsinline: true, autoplay: true, loop: true, preload: 'auto', src: url });
@@ -110,23 +124,12 @@ export class PostViewer {
       video.play?.()?.catch?.(() => { video.muted = true; video.play().catch(() => {}); });
       this.stage.replaceChildren(video);
     } else if (kind === 'image') {
-      const img = h('img', { class: 'pv-image', alt: post.caption || '', decoding: 'async', draggable: 'false', fetchpriority: 'high' });
-      this.stage.classList.add('loading');
-      img.addEventListener('load', () => this.stage.classList.remove('loading'), { once: true });
-      setImage(img, url, fullWidth(), {
-        quality: 85,
-        onFail: () => {
-          if (this.post !== post) return;
-          this.stage.classList.remove('loading');
-          this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
-        },
-      });
-      // Tap a photo to see it at its real size (scroll to pan); tap again to fit the screen.
-      img.addEventListener('click', () => { if (!this.swiped) this.stage.classList.toggle('zoomed'); });
-      this.stage.replaceChildren(img);
+      this.imageIndex = 0;
+      this.#renderImage(post, 0);
     } else {
       this.stage.replaceChildren(h('div', { class: 'pv-text' }, post.caption || ''));
     }
+    this.#renderSoundtrack(post);
     this.caption.textContent = kind === 'text' ? '' : post.caption || '';
     this.caption.hidden = !this.caption.textContent;
     const created = post.created_at || post.createdAt;
@@ -143,6 +146,72 @@ export class PostViewer {
   #stopVideo() {
     const video = this.stage.querySelector('video');
     if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+    const audio = this.sound.querySelector('audio');
+    if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+  }
+
+  #renderImage(post, index) {
+    const items = photoItems(post);
+    const url = items[index];
+    if (!url) return;
+    this.imageIndex = index;
+    const img = h('img', { class: `pv-image pv-image-${this.root.dataset.style || 'fade'}`, alt: post.caption || '', decoding: 'async', draggable: 'false', fetchpriority: 'high' });
+    const controls = [];
+    if (items.length > 1) {
+      controls.push(
+        h('button', { class: 'icon-btn pv-image-prev', type: 'button', 'aria-label': t('previous'), disabled: index <= 0, onclick: event => { event.stopPropagation(); this.#stepImage(-1); } }, '‹'),
+        h('span', { class: 'pv-image-count' }, `${t('photoNumber')} ${index + 1}/${items.length}`),
+        h('button', { class: 'icon-btn pv-image-next', type: 'button', 'aria-label': t('next'), disabled: index >= items.length - 1, onclick: event => { event.stopPropagation(); this.#stepImage(1); } }, '›'),
+        h('button', { class: 'pill-btn pv-slideshow-play', type: 'button', onclick: event => { event.stopPropagation(); this.#toggleSlideshow(items.length); } },
+          this.slideshowPlaying ? t('pauseSlideshow') : t('playSlideshow')));
+    }
+    this.stage.classList.add('loading');
+    img.addEventListener('load', () => { if (this.post === post && this.imageIndex === index) this.stage.classList.remove('loading'); }, { once: true });
+    setImage(img, url, fullWidth(), {
+      quality: 85,
+      onFail: () => {
+        if (this.post !== post || this.imageIndex !== index) return;
+        this.stage.classList.remove('loading');
+        this.stage.replaceChildren(mediaPlaceholder(t('imageUnavailable')));
+      },
+    });
+    img.addEventListener('click', () => { if (!this.swiped) this.stage.classList.toggle('zoomed'); });
+    this.stage.replaceChildren(img, ...controls);
+  }
+
+  #stepImage(delta) {
+    const items = photoItems(this.post);
+    const next = this.imageIndex + delta;
+    if (next < 0 || next >= items.length) return;
+    this.#renderImage(this.post, next);
+  }
+
+  #toggleSlideshow(count) {
+    if (this.slideshowPlaying) {
+      this.#stopSlideshow();
+      this.#renderImage(this.post, this.imageIndex);
+      return;
+    }
+    this.slideshowPlaying = true;
+    this.#renderImage(this.post, this.imageIndex);
+    this.slideTimer = setInterval(() => {
+      const next = (this.imageIndex + 1) % count;
+      this.#renderImage(this.post, next);
+    }, 3500);
+  }
+
+  #stopSlideshow() {
+    clearInterval(this.slideTimer);
+    this.slideTimer = null;
+    this.slideshowPlaying = false;
+  }
+
+  #renderSoundtrack(post) {
+    const url = post.media?.audioUrl || post.audio_url || '';
+    this.sound.replaceChildren();
+    if (typeof url === 'string' && /^https:\/\//i.test(url)) {
+      this.sound.append(h('small', { class: 'muted' }, t('backgroundAudio')), h('audio', { controls: true, preload: 'none', src: url }));
+    }
   }
 
   #paintCounts() {

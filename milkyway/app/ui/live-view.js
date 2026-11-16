@@ -58,7 +58,7 @@ function liveChrome({ host = false } = {}) {
   const stageLabel = h('span', { class: 'stage-label' }, t('requestJoin'));
   const stageBtn = h('button', { class: 'live-join-btn', type: 'button', 'data-act': 'stage', 'data-no-swipe': true, 'aria-label': t('requestJoin'), title: t('requestJoin') },
     h('span', { class: 'stage-icon', html: icon.guests, 'aria-hidden': 'true' }), stageLabel);
-  const giftBtn = h('button', { class: 'icon-btn gift', type: 'button', 'data-act': 'gift', 'aria-label': t('gift'), html: icon.gift });
+  const giftBtn = h('button', { class: 'icon-btn gift', type: 'button', 'data-act': 'gift', 'data-no-swipe': true, 'aria-label': t('gift'), title: t('gift'), html: icon.gift });
   const likeBtn = h('button', { class: 'icon-btn like', type: 'button', 'data-act': 'like', 'aria-label': 'Like', html: icon.heart });
   const bar = h('div', { class: 'live-bar' }, form,
     ...(host
@@ -617,7 +617,11 @@ export class LiveView {
       }
       else if (act === 'comment' || act === 'unpin') { /* host-only actions */ }
       else if (act === 'like') { if (this.session) this.session.like(); }
-      else if (act === 'gift') { if (this.hooks.requireLogin() && this.session) this.hooks.openGifts({ room: live.room, to: live.host, session: this.session }); }
+      else if (act === 'gift') {
+        if (!this.hooks.requireLogin() || !this.session) return;
+        Promise.resolve(this.hooks.openGifts({ room: live.room, to: live.host, session: this.session }))
+          .catch(error => toast(error?.message || t('giftFailed')));
+      }
       else if (act === 'share') shareLive(live);
       else if (act === 'profile') this.hooks.openProfile(live.host);
       else if (act === 'follow') { if (this.hooks.requireLogin()) actions.follow(live.host.id, true).then(() => { slide._refs.follow.hidden = true; }).catch(error => toast(error.message)); }
