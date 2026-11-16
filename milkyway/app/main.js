@@ -6,7 +6,7 @@
 //   3. The cached feed renders; video #1 starts. Network refresh, supabase-js, LiveKit and every sheet load later,
 //      in the background or on first use.
 import { config } from './config.js';
-import { auth } from './core/net.js';
+import { auth, supabase } from './core/net.js';
 import { bus, idle } from './core/events.js';
 import { t } from './core/i18n.js';
 import { FeedView } from './ui/feed-view.js';
@@ -140,12 +140,54 @@ document.addEventListener('click', event => {
 bus.on('offline', () => { $('netBanner').hidden = false; $('netBanner').textContent = t('offline'); });
 bus.on('online', () => { if (!$('netBanner').hidden) { $('netBanner').hidden = true; toast(t('backOnline')); } });
 if (navigator.onLine === false) { $('netBanner').hidden = false; $('netBanner').textContent = t('offline'); }
+let syncingOAuthUsername = false;
+async function syncPendingOAuthUsername() {
+  const key = 'mw_pending_oauth_username';
+  const raw = localStorage.getItem(key);
+  if (!raw || !auth.signedIn() || syncingOAuthUsername) return;
+  let pending;
+  try { pending = JSON.parse(raw); }
+  catch {
+    localStorage.removeItem(key);
+    return;
+  }
+  if (typeof pending?.username !== 'string' || !Number.isFinite(pending.startedAt)
+    || Date.now() - pending.startedAt > 30 * 60 * 1000) {
+    localStorage.removeItem(key);
+    return;
+  }
+  const createdAt = Date.parse(auth.user?.created_at || '');
+  if (!Number.isFinite(createdAt) || createdAt < pending.startedAt - 60_000) {
+    localStorage.removeItem(key);
+    return;
+  }
+  const userId = auth.userId;
+  syncingOAuthUsername = true;
+  try {
+    const sb = await supabase();
+    if (userId !== auth.userId) return;
+    const { error } = await sb.from('mw_profiles').upsert(
+      { id: userId, username: pending.username },
+      { onConflict: 'id' },
+    );
+    if (error) throw error;
+    if (localStorage.getItem(key) === raw) localStorage.removeItem(key);
+  } catch (error) {
+    console.error('[auth] Google sign-up username could not be saved', error);
+    toast(error.message || 'Your username could not be saved. Please try again.');
+  } finally {
+    syncingOAuthUsername = false;
+  }
+}
 bus.on('auth', () => {
   shell.toggleAttribute('data-signed-in', auth.signedIn());
   if (!auth.signedIn() && scope === 'following') scope = 'foryou';
   feedView.scope = null;
   setScope(scope);
-  if (auth.signedIn()) startSignedIn();
+  if (auth.signedIn()) {
+    syncPendingOAuthUsername();
+    startSignedIn();
+  }
 });
 shell.toggleAttribute('data-signed-in', auth.signedIn());
 playback.onMute(muted => shell.toggleAttribute('data-muted', muted));
@@ -172,6 +214,7 @@ function startSignedIn() {
 }
 
 idle(() => {
+  syncPendingOAuthUsername();
   profiles.loadFollowing();
   startSignedIn();
   // LIVE badge: show when someone is live (cached list first, quiet refresh).

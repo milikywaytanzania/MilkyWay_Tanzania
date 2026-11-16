@@ -726,6 +726,40 @@ html[data-low-end] .call-btn { backdrop-filter: none; }
 /* Language picker on the sign-in sheet (guests can switch language before logging in). */
 .auth-lang { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .auth-lang .field { flex: 1; min-height: 40px; }
+.sheet.auth-sheet { max-height: min(88dvh, 760px); padding: 0 18px calc(16px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
+.auth-sheet .sheet-grip { height: 24px; flex: none; }
+.auth-sheet .sheet-title { margin: 0 0 16px; font-size: 20px; font-weight: 750; }
+.auth-sheet .sheet-body { gap: 12px; }
+.auth-form { gap: 12px; padding: 0 2px; }
+.auth-form .field { height: 44px; min-height: 44px; border-radius: 12px; }
+.auth-field-wrap { min-width: 0; }
+.auth-password-field { position: relative; min-width: 0; }
+.auth-password-field .field { padding-right: 50px; }
+.auth-password-toggle { position: absolute; inset: 0 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
+.auth-password-toggle svg { width: 19px; height: 19px; }
+.auth-submit { min-height: 48px; height: 48px; padding: 0 18px !important; border-radius: 12px; font-size: 15px; }
+.auth-message { min-height: 0; margin: 0; text-align: center; font-size: 13px; overflow-wrap: anywhere; }
+.auth-forgot { justify-self: end; padding: 0 2px; font-size: 13px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
+.auth-divider span { height: 1px; flex: 1; background: var(--line); }
+.auth-divider b { font-weight: 500; }
+.auth-google { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.055); font-weight: 650; }
+.auth-google:disabled { opacity: .55; }
+.auth-google-mark { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #4285f4; font-weight: 800; font-family: Arial, sans-serif; }
+.auth-switch { padding: 2px 0; }
+.auth-sheet .sheet-body > .auth-language-button { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 4px; border-top: 1px solid var(--line); color: var(--muted); text-align: left; }
+.auth-language-button > span:nth-child(2) { flex: 1; color: var(--fg); }
+.auth-language-chevron { font-size: 18px; }
+.sheet.language-sheet { max-height: min(70dvh, 560px); padding: 0 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
+.language-sheet .sheet-title { margin: 0 0 14px; font-size: 18px; }
+.language-options { gap: 6px; }
+.language-option { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border: 1px solid transparent; border-radius: 12px; background: rgba(255,255,255,.045); text-align: left; }
+.language-option[aria-pressed="true"] { border-color: rgba(155,92,255,.48); background: rgba(155,92,255,.16); color: #fff; }
+.language-option-check { color: var(--accent-2); font-weight: 750; }
+@media (min-width: 720px) {
+  .sheet.auth-sheet { left: 50%; right: auto; width: min(440px, calc(100vw - 32px)); margin-left: -220px; border-radius: 22px; }
+  .sheet.language-sheet { left: 50%; right: auto; width: min(420px, calc(100vw - 32px)); margin-left: -210px; border-radius: 22px; }
+}
 
 /* Go LIVE setup: a small TikTok-style bottom card. Each row is its own block in a single-column stack (head row,
    Video/Audio pills, guest chips, comment chips, Start) so nothing shares a line or overlaps. Heights are pinned with
