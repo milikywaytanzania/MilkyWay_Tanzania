@@ -235,11 +235,17 @@ test('share sheets fit the screen and support native sharing or copy fallback', 
   const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
   const live = readFileSync(new URL('../milkyway/app/ui/live-view.js', import.meta.url), 'utf8');
   const share = readFileSync(new URL('../milkyway/app/ui/share-sheet.js', import.meta.url), 'utf8');
+  const sheet = readFileSync(new URL('../milkyway/app/ui/sheet.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
   for (const source of [feed, viewer, live]) assert.match(source, /openShare\(/);
-  assert.match(share, /navigator\.share\(\{ title: tray\.title, text: tray\.text, url: tray\.url \}\)/);
+  assert.match(share, /shareWithDevice\(current, \{ openFallback: true \}\)/);
+  assert.match(share, /navigator\.share\(\{ title: current\.title, text: current\.text, url: current\.url \}\)/);
+  assert.match(share, /native\.addEventListener\('click', \(\) => shareWithDevice\(tray\)\)/);
   assert.match(share, /navigator\.clipboard\?\.writeText/);
   assert.match(share, /document\.execCommand\('copy'\)/);
+  assert.match(share, /autoFocus: false/);
+  assert.match(sheet, /if \(this\.autoFocus\)/);
+  assert.match(sheet, /constructor\(\{ title = '', className = '', onClose, autoFocus = true \}/);
   assert.match(styles, /\.share-sheet/);
   assert.match(feed, /mediaPlaceholder\(t\('imageUnavailable'\)\)/);
   assert.match(feed, /video\.addEventListener\('error'/);

@@ -2,8 +2,9 @@
 import { h } from './dom.js';
 
 export class Sheet {
-  constructor({ title = '', className = '', onClose } = {}) {
+  constructor({ title = '', className = '', onClose, autoFocus = true } = {}) {
     this.onClose = onClose;
+    this.autoFocus = autoFocus;
     this.body = h('div', { class: 'sheet-body' });
     this.heading = h('h2', { class: 'sheet-title' }, title);
     this.panel = h('div', { class: `sheet ${className}`, role: 'dialog', 'aria-modal': 'true', 'data-no-swipe': true },
@@ -23,7 +24,7 @@ export class Sheet {
     clearTimeout(this.hideTimer);
     this.root.hidden = false;
     requestAnimationFrame(() => this.root.classList.add('open'));
-    setTimeout(() => this.panel.querySelector('input, textarea, button')?.focus({ preventScroll: true }), 220);
+    if (this.autoFocus) setTimeout(() => this.panel.querySelector('input, textarea, button')?.focus({ preventScroll: true }), 220);
   }
   close() {
     if (this.root.hidden) return;

@@ -20,9 +20,33 @@ async function copyText(value) {
   return copied;
 }
 
+function shareWithDevice(current, { openFallback = false } = {}) {
+  if (current.sharing || typeof navigator.share !== 'function') return;
+  current.sharing = true;
+  current.native.disabled = true;
+  let result;
+  try {
+    result = navigator.share({ title: current.title, text: current.text, url: current.url });
+  } catch (error) {
+    current.sharing = false;
+    current.native.disabled = false;
+    if (openFallback) current.sheet.open();
+    else if (error?.name !== 'AbortError') toast(error?.message || t('retry'));
+    return;
+  }
+  Promise.resolve(result).then(() => current.sheet.close()).catch(error => {
+    if (error?.name === 'AbortError') return;
+    if (openFallback) current.sheet.open();
+    else toast(error?.message || t('retry'));
+  }).finally(() => {
+    current.sharing = false;
+    current.native.disabled = false;
+  });
+}
+
 function getTray() {
   if (tray) return tray;
-  const sheet = new Sheet({ title: t('share'), className: 'share-sheet' });
+  const sheet = new Sheet({ title: t('share'), className: 'share-sheet', autoFocus: false });
   const description = h('p', { class: 'share-description' });
   const url = h('input', { class: 'field share-url', type: 'url', readonly: '', 'aria-label': t('shareLink') });
   const copy = h('button', { class: 'pill-btn hot wide', type: 'button' }, t('copyLink'));
@@ -36,16 +60,7 @@ function getTray() {
     } catch (error) { toast(error?.message || t('retry')); }
     finally { copy.disabled = false; }
   });
-  native.addEventListener('click', async () => {
-    if (!navigator.share) { native.hidden = true; return; }
-    native.disabled = true;
-    try {
-      await navigator.share({ title: tray.title, text: tray.text, url: tray.url });
-      sheet.close();
-    } catch (error) {
-      if (error?.name !== 'AbortError') toast(error?.message || t('retry'));
-    } finally { native.disabled = false; }
-  });
+  native.addEventListener('click', () => shareWithDevice(tray));
   sheet.body.append(description, url, native, copy);
   tray = { sheet, description, urlInput: url, native, title: '', text: '', url: '' };
   return tray;
@@ -63,5 +78,9 @@ export function openShare({ title = 'MilkyWay', text = '', url } = {}) {
   current.description.textContent = text || title;
   current.urlInput.value = url;
   current.native.hidden = typeof navigator.share !== 'function';
+  if (!current.native.hidden) {
+    shareWithDevice(current, { openFallback: true });
+    return;
+  }
   current.sheet.open();
 }
