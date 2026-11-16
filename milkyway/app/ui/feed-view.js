@@ -15,6 +15,7 @@ import { VerticalPager } from './pager.js';
 import { playback } from './playback.js';
 import { h, icon, count, toast, paintAvatar, brandMark, avatar, mediaPlaceholder } from './dom.js';
 import { loadAds, loadSuggestions, weave, adImpression, adClick, dismissAd } from '../data/promoted.js';
+import { openShare } from './share-sheet.js';
 
 const DOUBLE_TAP_MS = 260;
 
@@ -345,12 +346,6 @@ export class FeedView {
 
   async #share(post) {
     const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?post=${encodeURIComponent(post.id)}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: post.author.name, text: (post.caption || '').slice(0, 120), url }); }
-      catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
-      return;
-    }
-    try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-    catch { toast(t('retry')); }
+    openShare({ title: post.author.name || 'MilkyWay', text: (post.caption || '').slice(0, 120), url });
   }
 }

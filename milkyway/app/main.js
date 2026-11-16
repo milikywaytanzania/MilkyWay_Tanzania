@@ -161,6 +161,8 @@ function startSignedIn() {
   if (signedInStarted || !auth.signedIn()) return;
   signedInStarted = true;
   callView().then(calls => calls.watch());
+  import('./data/post-notifications.js').then(({ watchPostNotifications }) => watchPostNotifications())
+    .catch(error => console.warn('[notifications] post realtime unavailable', error));
   import('./data/presence.js').then(({ presence }) => presence.start());
 }
 

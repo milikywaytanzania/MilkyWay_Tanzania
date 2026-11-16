@@ -5,6 +5,7 @@ import { auth, supabase } from '../core/net.js';
 import { setImage, poster, mediaKind } from '../core/media.js';
 import { actions } from '../data/feed.js';
 import { h, icon, count, ago, toast, brandMark, mediaPlaceholder } from './dom.js';
+import { openShare } from './share-sheet.js';
 
 const SWIPE_PX = 60;
 
@@ -263,13 +264,7 @@ export class PostViewer {
   async #share() {
     const post = this.post;
     const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?post=${encodeURIComponent(post.id)}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: 'MilkyWay', text: (post.caption || '').slice(0, 120), url }); }
-      catch (error) { if (error?.name !== 'AbortError') toast(t('retry')); }
-      return;
-    }
-    try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); }
-    catch { toast(t('retry')); }
+    openShare({ title: post.author?.name || 'MilkyWay', text: (post.caption || '').slice(0, 120), url });
   }
 
   // Delete needs a second tap within 3 s.

@@ -13,6 +13,7 @@ import { LiveSession } from './live-session.js';
 import { loadLiveKit } from '../core/sdk.js';
 import { HostControls, InvitePrompt } from './live-controls.js';
 import { Sheet } from './sheet.js';
+import { openShare } from './share-sheet.js';
 import { h, icon, count, toast, paintAvatar, brandMark, avatar } from './dom.js';
 
 const JOIN_DELAY = 200;
@@ -622,7 +623,7 @@ export class LiveView {
         Promise.resolve(this.hooks.openGifts({ room: live.room, to: live.host, session: this.session }))
           .catch(error => toast(error?.message || t('giftFailed')));
       }
-      else if (act === 'share') shareLive(live);
+      else if (act === 'share') openShare({ title: live.title || 'MilkyWay LIVE', url: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}#live=${encodeURIComponent(live.room)}` });
       else if (act === 'profile') this.hooks.openProfile(live.host);
       else if (act === 'follow') { if (this.hooks.requireLogin()) actions.follow(live.host.id, true).then(() => { slide._refs.follow.hidden = true; }).catch(error => toast(error.message)); }
     });
@@ -737,7 +738,7 @@ export class LiveView {
       if (streamControl(act, session, button, stage)) return;
       if (act === 'end') finish();
       else if (act === 'retry') session.reconnect().catch(error => { toast(error?.message || t('liveUnavailable')); showRetry(stage, t('liveUnavailable')); });
-      else if (act === 'share') shareLive(live);
+      else if (act === 'share') openShare({ title: live.title || 'MilkyWay LIVE', url: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}#live=${encodeURIComponent(live.room)}` });
       else if (act === 'guests') controls.openGuests();
       else if (act === 'approve-request' || act === 'reject-request') {
         const userId = button.dataset.uid;
@@ -798,28 +799,4 @@ export class LiveView {
       finish();
     }
   }
-}
-
-async function shareLive(live) {
-  const url = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}#live=${encodeURIComponent(live.room)}`;
-  if (navigator.share) {
-    try { await navigator.share({ title: live.title || 'MilkyWay LIVE', url }); return; }
-    catch (error) { if (error?.name === 'AbortError') return; }
-  }
-  try {
-    if (navigator.clipboard?.writeText) {
-      try { await navigator.clipboard.writeText(url); toast(t('linkCopied')); return; }
-      catch { /* Try the selection-based fallback on browsers without clipboard permission. */ }
-    }
-    const field = h('textarea', { readonly: '', 'aria-hidden': 'true' });
-    field.value = url;
-    field.style.position = 'fixed';
-    field.style.opacity = '0';
-    document.body.append(field);
-    let copied = false;
-    try { field.select(); copied = document.execCommand('copy'); }
-    finally { field.remove(); }
-    if (!copied) throw new Error('Clipboard copy was rejected.');
-    toast(t('linkCopied'));
-  } catch { toast(t('retry')); }
 }
