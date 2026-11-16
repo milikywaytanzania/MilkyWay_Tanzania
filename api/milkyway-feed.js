@@ -17,7 +17,7 @@ const clamp = (value, min, max, fallback) => {
 };
 const validTime = value => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
 const quiet = promise => promise.catch(() => null);
-const POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at';
+const POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,created_at';
 const LEGACY_POST_FIELDS = 'id,author_id,author_name,caption,media_url,media_type,created_at';
 // Posts store media_type as 'video' / 'image', a MIME type ('video/mp4', 'image/jpeg') or nothing at all (older posts),
 // so the file extension decides when the type is missing or unknown.
@@ -61,7 +61,7 @@ async function page({ ctx, query }) {
   } catch (error) {
     const message = String(error?.message || '');
     const missingSlideshowFields = isMissingSchema(error)
-      && /media_items|audio_url|slideshow_style/i.test(message);
+      && /media_items|media_preview_items|audio_url|slideshow_style/i.test(message);
     if (!missingSlideshowFields) throw error;
     rows = (await ctx.rest(`mw_posts?${filters.map(filter => filter.startsWith('select=') ? `select=${LEGACY_POST_FIELDS}` : filter).join('&')}`)) || [];
   }
@@ -116,6 +116,7 @@ async function page({ ctx, query }) {
       media: row.media_url ? {
         url: row.media_url, type: mediaKind(row.media_url, row.media_type),
         items: Array.isArray(row.media_items) ? row.media_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
+        previewItems: Array.isArray(row.media_preview_items) ? row.media_preview_items.filter(item => typeof item === 'string' && /^https:\/\//i.test(item)).slice(0, 8) : [],
         audioUrl: typeof row.audio_url === 'string' && /^https:\/\//i.test(row.audio_url) ? row.audio_url : '',
         style: ['fade', 'zoom', 'cinema', 'page', 'slide'].includes(row.slideshow_style) ? row.slideshow_style : 'fade',
       } : null,

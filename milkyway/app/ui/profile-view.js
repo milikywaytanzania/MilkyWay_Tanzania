@@ -13,6 +13,15 @@ import { isOwnerAccount } from './admin-view.js';
 
 const quiet = promise => Promise.resolve(promise).then(result => result, () => ({}));
 
+async function loadProfilePosts(sb, id) {
+  const fields = 'id,author_id,caption,media_url,media_type,media_items,media_preview_items,audio_url,slideshow_style,created_at';
+  let result = await sb.from('mw_posts').select(fields).eq('author_id', id).order('created_at', { ascending: false }).limit(30);
+  if (result.error && /media_preview_items/i.test(result.error.message || '')) {
+    result = await sb.from('mw_posts').select(fields.replace(',media_preview_items', '')).eq('author_id', id).order('created_at', { ascending: false }).limit(30);
+  }
+  return result;
+}
+
 export class ProfileView {
   constructor({ requireLogin, openCreate, openComments, openMenu, openChat }) {
     this.hooks = { requireLogin, openCreate, openComments, openMenu, openChat };
@@ -97,7 +106,7 @@ export class ProfileView {
         quiet(sb.from('mw_profiles').select('*').eq('id', id).maybeSingle()),
         quiet(sb.from('mw_follows').select('follower_id', head).eq('following_id', id)),
         quiet(sb.from('mw_follows').select('following_id', head).eq('follower_id', id)),
-        quiet(sb.from('mw_posts').select('id,author_id,caption,media_url,media_type,media_items,audio_url,slideshow_style,created_at').eq('author_id', id).order('created_at', { ascending: false }).limit(30)),
+        quiet(loadProfilePosts(sb, id)),
       ]);
       if (token !== this.token) return;
       const row = profile.data || {};
@@ -197,15 +206,20 @@ function tile(post, { open, menu }) {
   const url = post.media_url || '';
   const node = h('div', { class: `profile-tile ${kind}`, role: 'button', tabindex: '0', 'data-post': String(post.id), 'aria-label': post.caption || t('post') });
   if (kind === 'video') {
-    // A still frame: the saved poster when there is one, otherwise the first frame of the video itself.
     const still = poster(url, 360);
-    const video = h('video', { muted: true, playsinline: true, preload: 'metadata', disablepictureinpicture: true, src: `${url}#t=0.1` });
-    video.muted = true;
-    if (still) video.poster = still;
-    node.append(video, h('span', { class: 'tile-badge', html: icon.play, 'aria-hidden': 'true' }));
+    if (still) {
+      const img = h('img', { alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' });
+      setImage(img, `${url}.poster.jpg`, 360, { quality: 60 });
+      node.append(img);
+    } else {
+      node.classList.add('missing');
+      node.append(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '▶'));
+    }
+    node.append(h('span', { class: 'tile-badge', html: icon.play, 'aria-hidden': 'true' }));
   } else if (kind === 'image') {
     const img = h('img', { alt: post.caption || '', loading: 'lazy', decoding: 'async', draggable: 'false' });
-    setImage(img, url, 360, { onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
+    const preview = post.media_preview_items?.[0] || url;
+    setImage(img, preview, 360, { quality: 65, onFail: () => { node.classList.add('missing'); img.remove(); node.prepend(h('span', { class: 'tile-missing', 'aria-hidden': 'true' }, '🖼')); } });
     node.append(img);
   } else {
     node.append(h('p', {}, (post.caption || '').slice(0, 140)));

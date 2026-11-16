@@ -31,7 +31,7 @@ async function call(query) {
 
 test('feed page returns ready-to-render posts with counts and hides private and audience-restricted posts', async () => {
   const rows = [
-    { id: P(1), author_id: A, author_name: 'Asha', caption: 'hi', media_url: 'https://x/v.mp4', media_type: 'video', media_items: [], audio_url: 'https://x/music.mp3', slideshow_style: 'cinema', created_at: '2026-11-14T10:00:00Z' },
+    { id: P(1), author_id: A, author_name: 'Asha', caption: 'hi', media_url: 'https://x/photo.webp', media_type: 'image', media_items: ['https://x/photo.webp'], media_preview_items: ['https://x/photo-preview.webp'], audio_url: 'https://x/music.mp3', slideshow_style: 'cinema', created_at: '2026-11-14T10:00:00Z' },
     { id: P(2), author_id: B, author_name: 'Bo', caption: 'secret', media_url: null, media_type: null, created_at: '2026-11-14T09:00:00Z' },
     { id: P(3), author_id: A, author_name: 'Asha', caption: 'only me', media_url: null, media_type: null, created_at: '2026-11-14T08:00:00Z' },
   ];
@@ -49,7 +49,7 @@ test('feed page returns ready-to-render posts with counts and hides private and 
   assert.deepEqual(payload.posts.map(post => post.id), [P(1)]);
   assert.deepEqual(payload.posts[0], {
     id: P(1), author: { id: A, name: 'Asha K', username: 'asha', avatar: 'https://x/a.jpg' }, caption: 'hi',
-    media: { url: 'https://x/v.mp4', type: 'video', items: [], audioUrl: 'https://x/music.mp3', style: 'cinema' }, createdAt: '2026-11-14T10:00:00Z', likes: 2, comments: 1, liked: false, saved: false,
+    media: { url: 'https://x/photo.webp', type: 'image', items: ['https://x/photo.webp'], previewItems: ['https://x/photo-preview.webp'], audioUrl: 'https://x/music.mp3', style: 'cinema' }, createdAt: '2026-11-14T10:00:00Z', likes: 2, comments: 1, liked: false, saved: false,
   });
   assert.equal(payload.next, null);
   // One posts read, then every lookup in parallel — never per-post requests.
@@ -176,6 +176,9 @@ test('LIVE settings persist guest slots and featured host backgrounds with schem
 
 test('composer and post viewer support client-assisted photo slideshows with optional audio', () => {
   const compose = readFileSync(new URL('../milkyway/app/ui/compose-sheet.js', import.meta.url), 'utf8');
+  const optimizer = readFileSync(new URL('../milkyway/app/core/media-optimizer.js', import.meta.url), 'utf8');
+  const feedView = readFileSync(new URL('../milkyway/app/ui/feed-view.js', import.meta.url), 'utf8');
+  const mediaMigration = readFileSync(new URL('../supabase/migrations/20261119_milkyway_media_previews.sql', import.meta.url), 'utf8');
   const viewer = readFileSync(new URL('../milkyway/app/ui/post-viewer.js', import.meta.url), 'utf8');
   const profile = readFileSync(new URL('../milkyway/app/ui/profile-view.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
@@ -190,6 +193,17 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(compose, /value: 'page'.*stylePage/);
   assert.match(compose, /value: 'slide'.*styleSlide/);
   assert.match(compose, /media_items:\s*mediaItems,[\s\S]*audio_url,[\s\S]*slideshow_style/);
+  assert.match(compose, /media_preview_items:\s*mediaPreviewItems/);
+  assert.match(compose, /optimizeImage\(file\)/);
+  assert.match(compose, /createVideoPreview\(videoFile\)/);
+  assert.match(optimizer, /MAX_IMAGE_EDGE = 2048/);
+  assert.match(optimizer, /PREVIEW_EDGE = 640/);
+  assert.match(optimizer, /fullBlob\.size < file\.size/);
+  assert.match(optimizer, /video\.removeAttribute\('src'\)/);
+  assert.match(feedView, /post\.media\.previewItems\?\.\[0\]/);
+  assert.match(feedView, /loading = 'lazy'/);
+  assert.match(mediaMigration, /add column if not exists media_preview_items jsonb not null default '\[\]'::jsonb/i);
+  assert.match(mediaMigration, /notify pgrst, 'reload schema'/i);
   assert.match(viewer, /#stepImage\(delta\)/);
   assert.match(viewer, /#renderSoundtrack\(post\)/);
   assert.match(viewer, /#toggleSlideshow/);
@@ -197,7 +211,8 @@ test('composer and post viewer support client-assisted photo slideshows with opt
   assert.match(viewer, /preloaded\?\.decode\?\.\(\)/);
   assert.match(styles, /pv-image-page[\s\S]*@keyframes pvPageTurn/);
   assert.match(styles, /pv-image-slide[\s\S]*@keyframes pvSlide/);
-  assert.match(profile, /media_items,audio_url,slideshow_style/);
+  assert.match(profile, /media_items,media_preview_items,audio_url,slideshow_style/);
+  assert.match(profile, /media_preview_items/);
   assert.match(migration, /add column if not exists media_items jsonb/i);
   assert.match(migration, /add column if not exists audio_url text/i);
   assert.match(migration, /notify pgrst, 'reload schema'/i);

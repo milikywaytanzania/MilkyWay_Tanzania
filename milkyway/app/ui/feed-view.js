@@ -195,8 +195,11 @@ export class FeedView {
     if (type === 'image') {
       r.img.hidden = false;
       r.img.alt = post.caption || '';
-      r.img.fetchPriority = 'high';
-      setImage(r.img, post.media.url, device.mediaWidth, { onFail: () => { if (slide._post !== post) return; r.img.hidden = true; r.missing.hidden = false; } });
+      r.img.loading = 'lazy';
+      r.img.decoding = 'async';
+      r.img.fetchPriority = 'auto';
+      const preview = post.media.previewItems?.[0] || post.media.url;
+      setImage(r.img, preview, Math.min(720, device.mediaWidth), { quality: device.saveData ? 55 : 66, onFail: () => { if (slide._post !== post) return; r.img.hidden = true; r.missing.hidden = false; } });
     }
     else { r.img.onerror = null; r.img.removeAttribute('src'); }
     r.text.textContent = type === 'text' ? post.caption : '';
@@ -258,7 +261,7 @@ export class FeedView {
     mounted.forEach((slide, index) => {
       const post = slide._post;
       const url = post && mediaKind(post) === 'video' ? post.media.url : null;
-      playback.source(slide._refs.video, url, index - active, { saveData: device.saveData });
+      playback.source(slide._refs.video, url, index - active, { saveData: device.saveData || device.slowNetwork });
     });
   }
 

@@ -1,6 +1,7 @@
 // Create photo, slideshow, video or text posts. All slideshow assistance runs locally on the device.
 import { t } from '../core/i18n.js';
 import { auth, supabase } from '../core/net.js';
+import { createVideoPreview, optimizeImage, yieldToBrowser } from '../core/media-optimizer.js';
 import { profiles } from '../data/profiles.js';
 import { feed } from '../data/feed.js';
 import { Sheet } from './sheet.js';
@@ -131,15 +132,15 @@ export class ComposeSheet {
     this.message.textContent = t('autoStyleApplied');
   }
 
-  async #upload(sb, file) {
+  async #upload(sb, file, storagePath = '') {
     const name = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(-100) || 'media';
-    const path = `milkyway/${auth.userId}/${Date.now()}-${crypto.randomUUID()}-${name}`;
+    const path = storagePath || `milkyway/${auth.userId}/${Date.now()}-${crypto.randomUUID()}-${name}`;
     try {
       const uploaded = await sb.storage.from('portfolio').upload(path, file, { contentType: file.type });
       if (uploaded.error) throw uploaded.error;
       const publicUrl = sb.storage.from('portfolio').getPublicUrl(path).data?.publicUrl;
       if (!publicUrl) throw new Error('Supabase Storage did not return a public URL.');
-      return publicUrl;
+      return { url: publicUrl, path };
     } catch (error) {
       throw Object.assign(new Error(error?.message || String(error)), {
         cause: error,
@@ -159,16 +160,47 @@ export class ComposeSheet {
       const sb = await supabase();
       const video = this.files[0]?.file.type.startsWith('video/');
       phase = 'uploading post media';
-      const mediaItems = video ? [] : await Promise.all(this.files.map(entry => this.#upload(sb, entry.file)));
-      const media_url = video ? await this.#upload(sb, this.files[0].file) : mediaItems[0] || null;
+      const mediaItems = [];
+      const mediaPreviewItems = [];
+      let media_url = null;
+      if (video) {
+        const videoFile = this.files[0].file;
+        this.message.textContent = t('optimizingMedia');
+        await yieldToBrowser();
+        const posterFile = await createVideoPreview(videoFile);
+        const uploaded = await this.#upload(sb, videoFile);
+        media_url = uploaded.url;
+        if (posterFile) {
+          try { await this.#upload(sb, posterFile, `${uploaded.path}.poster.jpg`); }
+          catch (error) { console.warn('[compose] video poster upload failed; the video will still publish', error); }
+        }
+      } else {
+        for (let index = 0; index < this.files.length; index++) {
+          this.message.textContent = `${t('optimizingMedia')} ${index + 1}/${this.files.length}`;
+          await yieldToBrowser();
+          const { file } = this.files[index];
+          const optimized = await optimizeImage(file);
+          const [uploaded, preview] = await Promise.all([
+            this.#upload(sb, optimized.full),
+            optimized.preview ? this.#upload(sb, optimized.preview).catch(error => {
+              console.warn('[compose] photo preview upload failed; using the compressed photo in the feed', error);
+              return null;
+            }) : Promise.resolve(null),
+          ]);
+          mediaItems.push(uploaded.url);
+          mediaPreviewItems.push(preview?.url || uploaded.url);
+          media_url ||= uploaded.url;
+        }
+      }
       phase = 'uploading background audio';
-      const audio_url = this.audioFile ? await this.#upload(sb, this.audioFile) : null;
+      const audioUpload = this.audioFile ? await this.#upload(sb, this.audioFile) : null;
+      const audio_url = audioUpload?.url || null;
       const media_type = video ? 'video' : media_url ? 'image' : null;
       const author_name = profiles.peek(auth.userId)?.name || auth.name;
       phase = 'saving post details';
       const { error } = await sb.from('mw_posts').insert({
         author_id: auth.userId, author_name, caption: caption || null, media_url, media_type,
-        media_items: mediaItems, audio_url, slideshow_style: this.style.value,
+        media_items: mediaItems, media_preview_items: mediaPreviewItems, audio_url, slideshow_style: this.style.value,
       });
       if (error) throw error;
       this.caption.value = ''; this.#releaseMedia(); this.#pickAudio(null);
