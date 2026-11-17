@@ -239,6 +239,17 @@ test('Orbit feed subscribes to global post changes and Supabase publishes mw_pos
   assert.match(sync, /get error\(\) \{ return error; \}/);
 });
 
+test('DM call schema migration repairs call columns and reloads PostgREST schema', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261123_milkyway_dm_calls_schema.sql', import.meta.url), 'utf8');
+  for (const column of ['caller_id', 'callee_id', 'created_at', 'status']) {
+    assert.match(migration, new RegExp(`add column if not exists ${column}\\b`, 'i'));
+  }
+  assert.match(migration, /created_at set not null/i);
+  assert.match(migration, /status set not null/i);
+  assert.match(migration, /mw_dm_calls_incoming_idx/);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+});
+
 test('LIVE guest stage grants publisher permissions and renders allocated guest seats', () => {
   const roomApi = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
   const tokenApi = readFileSync(new URL('../api/milkyway-livekit-token.js', import.meta.url), 'utf8');
