@@ -384,6 +384,20 @@ test('app shell has no render-blocking scripts and loads the core as a module', 
   assert.doesNotMatch(html, /supabase-js|livekit-client/, 'SDKs load lazily, never from the shell');
 });
 
+test('Explore video tiles fall back to extracted frames and retain a dark creator placeholder', () => {
+  const discovery = readFileSync(new URL('../milkyway/app/ui/discovery-view.js', import.meta.url), 'utf8');
+  const media = readFileSync(new URL('../milkyway/app/core/media.js', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
+  assert.match(discovery, /extractVideoThumbnail\(media\.url\)/);
+  assert.match(discovery, /media\?\.previewItems\?\.\[0\]/);
+  assert.match(discovery, /class:\s*'explore-post-author'/);
+  assert.match(media, /video\.crossOrigin = 'anonymous'/);
+  assert.match(media, /context\.drawImage\(video/);
+  assert.match(media, /canvas\.toDataURL\('image\/jpeg'/);
+  assert.match(styles, /\.explore-post\.is-video-fallback/);
+  assert.match(styles, /\.explore-post-author/);
+});
+
 test('bottom navigation opens Explore discovery and keeps LIVE reachable outside the nav', () => {
   const html = readFileSync(new URL('../milkyway/index.html', import.meta.url), 'utf8');
   const navigation = html.match(/<nav class="bottombar"[\s\S]*?<\/nav>/)?.[0] || '';

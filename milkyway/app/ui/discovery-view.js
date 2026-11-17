@@ -3,7 +3,7 @@ import { api } from '../core/net.js';
 import { t } from '../core/i18n.js';
 import { searchPeople } from '../data/messages.js';
 import { profiles } from '../data/profiles.js';
-import { poster, setImage } from '../core/media.js';
+import { extractVideoThumbnail, poster, setImage } from '../core/media.js';
 import { h, avatar } from './dom.js';
 
 const TABS = ['all', 'people', 'tags', 'sounds'];
@@ -182,18 +182,46 @@ export class DiscoveryView {
     }
     this.results.append(h('div', { class: 'explore-grid' }, ...posts.map(post => {
       const media = post.media;
-      const source = media?.type === 'video' ? poster(media.url, 480) || media.previewItems?.[0] : media?.previewItems?.[0] || media?.url || media?.items?.[0];
+      const isVideo = media?.type === 'video';
+      const sources = isVideo
+        ? [media?.previewItems?.[0], poster(media.url, 480)].filter((source, index, list) => source && list.indexOf(source) === index)
+        : [media?.previewItems?.[0] || media?.url || media?.items?.[0]].filter(Boolean);
+      const authorName = post.author?.name || 'MilkyWay';
       const tile = h('button', {
-        class: `explore-post${source ? '' : ' is-text'}`, type: 'button',
-        'aria-label': `${post.author?.name || 'MilkyWay'}: ${(post.caption || '').slice(0, 100)}`,
+        class: `explore-post${isVideo ? ' is-video' : sources.length ? '' : ' is-text'}`, type: 'button',
+        'aria-label': `${authorName}: ${(post.caption || '').slice(0, 100)}`,
         onclick: () => this.openPost(post),
       });
-      if (source) {
+      const showFallback = () => {
+        tile.classList.add(isVideo ? 'is-video-fallback' : 'is-image-fallback');
+      };
+      if (sources.length || isVideo) {
         const img = h('img', { alt: '', loading: 'lazy', decoding: 'async' });
-        setImage(img, source, 480, { onFail: () => img.remove() });
         tile.append(img);
+        let sourceIndex = 0;
+        const useNextSource = () => {
+          const source = sources[sourceIndex++];
+          if (source) {
+            setImage(img, source, 480, { onFail: useNextSource });
+          } else if (isVideo) {
+            img.onerror = null;
+            img.removeAttribute('src');
+            extractVideoThumbnail(media.url).then(frame => {
+              if (!tile.isConnected) return;
+              if (frame) img.src = frame;
+              else showFallback();
+            });
+          } else {
+            img.remove();
+            showFallback();
+          }
+        };
+        useNextSource();
       } else tile.append(h('span', {}, post.caption || t('explorePost')));
-      tile.append(h('span', { class: 'explore-post-caption' }, post.caption || post.author?.name || t('explorePost')));
+      tile.append(
+        h('span', { class: 'explore-post-author' }, authorName),
+        h('span', { class: 'explore-post-caption' }, post.caption || t('explorePost')),
+      );
       return tile;
     })));
   }

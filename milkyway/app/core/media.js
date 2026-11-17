@@ -57,6 +57,77 @@ export function poster(videoUrl, width) {
   return image(`${videoUrl}.poster.jpg`, width, 60);
 }
 
+const videoThumbnailCache = new Map();
+const pendingVideoThumbnails = new Map();
+
+/** Extracts a small frame for video surfaces when no uploaded poster is available. */
+export function extractVideoThumbnail(videoUrl) {
+  if (!videoUrl || !/^https?:\/\//i.test(videoUrl)) return Promise.resolve('');
+  if (videoThumbnailCache.has(videoUrl)) return Promise.resolve(videoThumbnailCache.get(videoUrl));
+  if (pendingVideoThumbnails.has(videoUrl)) return pendingVideoThumbnails.get(videoUrl);
+
+  const task = new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      video.removeEventListener('loadedmetadata', seek);
+      video.removeEventListener('loadeddata', capture);
+      video.removeEventListener('seeked', capture);
+      video.removeEventListener('error', fail);
+      video.removeAttribute('src');
+      video.load();
+    };
+    const fail = () => { cleanup(); reject(new Error('Could not decode video thumbnail.')); };
+    const capture = () => {
+      try {
+        const scale = Math.min(1, 640 / Math.max(video.videoWidth, video.videoHeight));
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        const context = canvas.getContext('2d');
+        if (!context || !video.videoWidth || !video.videoHeight) throw new Error('Video frame is unavailable.');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frame = canvas.toDataURL('image/jpeg', 0.72);
+        cleanup();
+        resolve(frame);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+    const seek = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0.1) {
+        video.addEventListener('seeked', capture, { once: true });
+        video.currentTime = Math.min(0.2, video.duration / 2);
+      } else if (video.readyState >= 2) capture();
+      else video.addEventListener('loadeddata', capture, { once: true });
+    };
+
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', seek, { once: true });
+    video.addEventListener('error', fail, { once: true });
+    timer = setTimeout(fail, 7000);
+    video.src = videoUrl;
+    video.load();
+  }).then(frame => {
+    if (frame) {
+      videoThumbnailCache.set(videoUrl, frame);
+      if (videoThumbnailCache.size > 60) videoThumbnailCache.delete(videoThumbnailCache.keys().next().value);
+    }
+    return frame;
+  }).catch(error => {
+    console.warn('[media] video thumbnail extraction unavailable', error);
+    return '';
+  }).finally(() => pendingVideoThumbnails.delete(videoUrl));
+
+  pendingVideoThumbnails.set(videoUrl, task);
+  return task;
+}
+
 const VIDEO_FILE = /\.(mp4|m4v|mov|webm|ogv|3gp)(\?|#|$)/i;
 /** 'video' | 'image' | 'text' for a feed post ({ media: { url, type } }) or a mw_posts row (media_url, media_type). */
 export function mediaKind(post) {
