@@ -251,6 +251,18 @@ test('DM call schema migration repairs call columns and reloads PostgREST schema
   assert.match(migration, /notify pgrst, 'reload schema'/i);
 });
 
+test('LIVE room member updated_at is selected, repaired, and reloaded into PostgREST cache', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261124_milkyway_live_member_updated_at.sql', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
+  assert.match(migration, /add column if not exists updated_at timestamptz/i);
+  assert.match(migration, /set updated_at = now\(\)\s+where updated_at is null/i);
+  assert.match(migration, /alter column updated_at set default now\(\)/i);
+  assert.match(migration, /alter column updated_at set not null/i);
+  assert.match(migration, /mw_live_room_members_updated_idx/);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+  assert.match(api, /mw_live_room_members\?[^`]*select=room_name,user_id,name,avatar,state,host_muted,updated_at&order=updated_at\.desc/);
+});
+
 test('DM call connection validates token endpoints and offers an in-call retry on LiveKit errors', () => {
   const callView = readFileSync(new URL('../milkyway/app/ui/call-view.js', import.meta.url), 'utf8');
   const liveKit = readFileSync(new URL('../api/_lib/livekit.js', import.meta.url), 'utf8');

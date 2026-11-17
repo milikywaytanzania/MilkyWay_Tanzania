@@ -106,7 +106,7 @@ async function status(ctx, room, { enter = false } = {}) {
   const me = await whoAmI(ctx);
   const [settings, rows, messages, connected] = await Promise.all([
     loadSettings(ctx, room.roomName),
-    ctx.rest(`mw_live_room_members?room_name=eq.${enc(room.roomName)}&select=room_name,user_id,name,avatar,state,host_muted&order=updated_at.desc&limit=200`),
+    ctx.rest(`mw_live_room_members?room_name=eq.${enc(room.roomName)}&select=room_name,user_id,name,avatar,state,host_muted,updated_at&order=updated_at.desc&limit=200`),
     ctx.rest(`mw_live_room_messages?room_name=eq.${enc(room.roomName)}&select=id,user_id,name,avatar,kind,body,deleted,created_at&order=created_at.desc&limit=100`),
     connectedIds(room.roomName),
   ]);
