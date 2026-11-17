@@ -57,14 +57,32 @@ async function page({ ctx, query }) {
   }
 
   let rows;
-  try {
-    rows = (await ctx.rest(`mw_posts?${filters.join('&')}`)) || [];
-  } catch (error) {
-    const message = String(error?.message || '');
-    const missingSlideshowFields = isMissingSchema(error)
-      && /media_items|media_preview_items|audio_url|slideshow_style/i.test(message);
-    if (!missingSlideshowFields) throw error;
-    rows = (await ctx.rest(`mw_posts?${filters.map(filter => filter.startsWith('select=') ? `select=${LEGACY_POST_FIELDS}` : filter).join('&')}`)) || [];
+  let includeSlideshowFields = true;
+  let includeScheduledAt = true;
+  while (true) {
+    const fields = (includeSlideshowFields ? POST_FIELDS : LEGACY_POST_FIELDS)
+      .split(',')
+      .filter(field => includeScheduledAt || field !== 'scheduled_at')
+      .join(',');
+    const queryFilters = filters
+      .filter(filter => includeScheduledAt || !filter.startsWith('or=(scheduled_at.'))
+      .map(filter => filter.startsWith('select=') ? `select=${fields}` : filter);
+    try {
+      rows = (await ctx.rest(`mw_posts?${queryFilters.join('&')}`)) || [];
+      break;
+    } catch (error) {
+      const message = String(error?.message || '');
+      if (!isMissingSchema(error)) throw error;
+      if (includeSlideshowFields && /media_items|media_preview_items|audio_url|slideshow_style/i.test(message)) {
+        includeSlideshowFields = false;
+        continue;
+      }
+      if (includeScheduledAt && /\bscheduled_at\b/i.test(message)) {
+        includeScheduledAt = false;
+        continue;
+      }
+      throw error;
+    }
   }
   if (!rows.length) return { posts: [], next: null };
   const ids = rows.map(row => row.id);

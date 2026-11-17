@@ -185,6 +185,39 @@ test('Orbit feed falls back to core post columns when slideshow columns are abse
   assert.doesNotMatch(calls[1], /author_id=/, 'the For You query remains global');
 });
 
+test('Orbit feed falls back when scheduled_at is absent from an older posts schema', async () => {
+  const calls = [];
+  globalThis.fetch = async url => {
+    const address = String(url);
+    calls.push(address);
+    if (address.includes('/auth/v1/user')) return new Response('{}', { status: 401 });
+    if (address.includes('/rest/v1/mw_posts?') && address.includes('scheduled_at')) {
+      return new Response(JSON.stringify({ message: "Could not find the 'scheduled_at' column of 'mw_posts' in the schema cache" }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (address.includes('/rest/v1/mw_posts?')) return new Response('[]', { status: 200 });
+    return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const { status, payload } = await call({ action: 'page', scope: 'foryou', limit: '5' });
+  assert.equal(status, 200);
+  assert.deepEqual(payload, { posts: [], next: null });
+  assert.equal(calls.filter(url => url.includes('/rest/v1/mw_posts?')).length, 2);
+  assert.match(calls[0], /scheduled_at/);
+  assert.doesNotMatch(calls[1], /scheduled_at/);
+  assert.doesNotMatch(calls[1], /author_id=/, 'the For You query remains global');
+});
+
+test('Orbit feed treats an empty posts table as a successful empty page', async () => {
+  fakeSupabase([['/rest/v1/mw_posts?', []]]);
+  const { status, payload } = await call({ action: 'page', scope: 'foryou', limit: '5' });
+  assert.equal(status, 200);
+  assert.deepEqual(payload, { posts: [], next: null });
+
+  const strings = readFileSync(new URL('../milkyway/app/core/i18n.js', import.meta.url), 'utf8');
+  assert.match(strings, /empty:\s*'No posts yet\. Be the first to post!'/);
+});
+
 test('Orbit feed subscribes to global post changes and Supabase publishes mw_posts', () => {
   const feed = readFileSync(new URL('../milkyway/app/data/feed.js', import.meta.url), 'utf8');
   const migration = readFileSync(new URL('../supabase/migrations/20261116_milkyway_orbit_feed_realtime.sql', import.meta.url), 'utf8');
