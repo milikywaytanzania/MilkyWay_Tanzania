@@ -250,6 +250,25 @@ test('DM call schema migration repairs call columns and reloads PostgREST schema
   assert.match(migration, /notify pgrst, 'reload schema'/i);
 });
 
+test('DM call connection validates token endpoints and offers an in-call retry on LiveKit errors', () => {
+  const callView = readFileSync(new URL('../milkyway/app/ui/call-view.js', import.meta.url), 'utf8');
+  const liveKit = readFileSync(new URL('../api/_lib/livekit.js', import.meta.url), 'utf8');
+  const callApi = readFileSync(new URL('../api/milkyway-call.js', import.meta.url), 'utf8');
+  const translations = readFileSync(new URL('../milkyway/app/core/i18n.js', import.meta.url), 'utf8');
+  assert.match(callApi, /livekitUsable\(\)/);
+  assert.match(callApi, /serverUrl:\s*livekitUrl\(\)/);
+  assert.match(liveKit, /LIVEKIT_URL.*LIVEKIT_API_KEY.*LIVEKIT_API_SECRET/);
+  assert.match(liveKit, /const validLivekitUrl = \(\) =>/);
+  assert.match(liveKit, /url\.pathname === '\/'.*!url\.username/);
+  assert.match(callView, /callAccessToken\(roomName, this\.call\.id, auth\.name\)/);
+  assert.match(callView, /directCallToken\(roomName, auth\.name\)/);
+  assert.match(callView, /validLiveKitAccess/);
+  assert.match(callView, /this\.retryBtn\.hidden = false/);
+  assert.doesNotMatch(callView, /this\.hangUp\('disconnected'\)/);
+  assert.match(callView, /callServiceLimited/);
+  assert.match(translations, /callServiceLimited:/);
+});
+
 test('LIVE guest stage grants publisher permissions and renders allocated guest seats', () => {
   const roomApi = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
   const tokenApi = readFileSync(new URL('../api/milkyway-livekit-token.js', import.meta.url), 'utf8');

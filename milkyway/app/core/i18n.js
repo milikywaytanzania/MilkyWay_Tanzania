@@ -3,7 +3,7 @@ import { extraLocales } from './locales.js';
 
 const strings = {
   en: {
-    requestTimeout: 'The connection is slow. Check your network and try again.', callServiceError: 'Could not connect to the call service. Try again in a moment.', savedPosts: 'Saved posts', noSaved: 'No saved posts yet', unsave: 'Remove',
+    requestTimeout: 'The connection is slow. Check your network and try again.', callServiceError: 'Could not connect to the call service. Check your connection or try again.', callServiceLimited: 'The call service has reached a usage limit. Please try again later.', savedPosts: 'Saved posts', noSaved: 'No saved posts yet', unsave: 'Remove',
     forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Explore',
     exploreSearch: 'Search people, posts, #hashtags, sounds', exploreAll: 'All', explorePeople: 'People', exploreTags: 'Hashtags', exploreSounds: 'Sounds',
     exploreTrending: 'Trending hashtags', exploreNew: 'New posts', exploreResults: 'Posts', explorePeopleHint: 'Search people by name or @username',
@@ -127,7 +127,7 @@ const strings = {
     sayHello: 'Say hello 👋', deleteForMe: 'Delete for me', edited: 'edited',
   },
   sw: {
-    requestTimeout: 'Mtandao uko polepole. Angalia muunganisho wako na ujaribu tena.', callServiceError: 'Imeshindikana kuunganisha huduma ya simu. Jaribu tena baada ya muda mfupi.', savedPosts: 'Post zilizohifadhiwa', noSaved: 'Bado hujahifadhi post yoyote', unsave: 'Ondoa',
+    requestTimeout: 'Mtandao uko polepole. Angalia muunganisho wako na ujaribu tena.', callServiceError: 'Imeshindikana kuunganisha huduma ya simu. Angalia mtandao au ujaribu tena.', callServiceLimited: 'Huduma ya simu imefikia kikomo cha matumizi. Tafadhali jaribu tena baadaye.', savedPosts: 'Post zilizohifadhiwa', noSaved: 'Bado hujahifadhi post yoyote', unsave: 'Ondoa',
     forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Gundua',
     exploreSearch: 'Tafuta watu, machapisho, #hashtag na sauti', exploreAll: 'Zote', explorePeople: 'Watu', exploreTags: 'Hashtag', exploreSounds: 'Sauti',
     exploreTrending: 'Hashtag zinazovuma', exploreNew: 'Machapisho mapya', exploreResults: 'Machapisho', explorePeopleHint: 'Tafuta watu kwa jina au @jina_la_mtumiaji',

@@ -13,6 +13,13 @@ const SOURCE_NAMES = { [CAMERA]: 'camera', [MIC]: 'microphone' };
 export const livekitConfigured = () => !!(env('LIVEKIT_URL') && env('LIVEKIT_API_KEY') && env('LIVEKIT_API_SECRET'));
 // Clients connect over WebSocket; an https:// project URL (as copied from the LiveKit dashboard) means the same host.
 export const livekitUrl = () => env('LIVEKIT_URL').replace(/\/+$/, '').replace(/^https:/i, 'wss:').replace(/^http:/i, 'ws:');
+const validLivekitUrl = () => {
+  try {
+    const url = new URL(livekitUrl());
+    return ['ws:', 'wss:'].includes(url.protocol) && Boolean(url.hostname)
+      && url.pathname === '/' && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
+};
 
 function sign(claims) {
   const head = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(claims)}`;
@@ -43,7 +50,7 @@ export async function livekit(method, room, body = {}, grant = null) {
 // key". Checked with one cheap RoomService call and remembered for a few minutes per server instance.
 let credentialCheck = { at: 0, ok: true, reason: '' };
 export async function livekitUsable() {
-  if (!livekitConfigured() || !/^wss?:\/\//i.test(livekitUrl())) return false;
+  if (!livekitConfigured() || !validLivekitUrl()) return false;
   const age = Date.now() - credentialCheck.at;
   if (credentialCheck.at && age < (credentialCheck.ok ? 5 * 60_000 : 60_000)) return credentialCheck.ok;
   const now = Math.floor(Date.now() / 1000);

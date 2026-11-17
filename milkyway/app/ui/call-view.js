@@ -23,8 +23,34 @@ async function directCallToken(roomName, name) {
     headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || typeof data?.token !== 'string' || !/^wss?:/i.test(data?.serverUrl || '')) throw new Error(data?.error || t('callFailed'));
+  if (!response.ok || !validLiveKitAccess(data)) throw new Error(data?.error || t('callFailed'));
   return data;
+}
+const validLiveKitAccess = access => {
+  if (typeof access?.token !== 'string' || access.token.split('.').length !== 3) return false;
+  try {
+    const url = new URL(access.serverUrl);
+    return ['ws:', 'wss:'].includes(url.protocol) && Boolean(url.hostname);
+  } catch { return false; }
+};
+async function callAccessToken(roomName, callId, name) {
+  let gatewayError;
+  try {
+    const access = await callApi('token', { id: callId, name });
+    if (validLiveKitAccess(access)) return access;
+    gatewayError = new Error('The call service returned an invalid token or server URL.');
+  } catch (error) {
+    gatewayError = error;
+    if ([401, 403, 404, 409].includes(error?.status)) throw error;
+  }
+  try {
+    const access = await directCallToken(roomName, name);
+    if (validLiveKitAccess(access)) return access;
+    throw new Error('The Supabase call service returned an invalid token or server URL.');
+  } catch (error) {
+    if (error?.message && error.message !== t('callFailed')) throw error;
+    throw gatewayError || error;
+  }
 }
 const RING_MS = 55_000;
 const callApi = (action, body) => api(`${CALL_API}?action=${action}`, body ? { method: 'POST', body, timeout: 15000 } : { timeout: 12000 });
@@ -44,6 +70,8 @@ class CallScreen {
     this.mode = mode;
     this.incoming = incoming;
     this.closed = false;
+    this.connecting = false;
+    this.roomConnected = false;
     this.connectedAt = 0;
     this.micOn = true;
     this.camOn = mode === 'video';
@@ -61,6 +89,10 @@ class CallScreen {
     this.remote = h('div', { class: 'call-remote' });
     this.local = h('div', { class: 'call-local' });
     this.status = h('span', { class: 'call-status', role: 'status', 'aria-live': 'polite' });
+    this.errorMessage = h('p', { class: 'call-error', role: 'alert', hidden: true });
+    this.retryBtn = h('button', {
+      class: 'pill-btn call-retry', type: 'button', hidden: true, onclick: () => this.#connect(),
+    }, t('retry'));
     this.audioBox = h('div', { hidden: true });
     const button = (label, html, onclick, extra = '') => h('button', { class: `call-btn ${extra}`, type: 'button', 'aria-label': label, title: label, html, onclick });
     this.micBtn = button(t('microphone'), icon.mic, () => this.#toggleMic());
@@ -74,7 +106,7 @@ class CallScreen {
       h('button', { class: 'call-btn accept', type: 'button', 'aria-label': t('accept'), html: this.mode === 'video' ? icon.camera : icons.phone, onclick: () => this.#accept() }));
     this.root = h('div', { class: 'call-layer', role: 'dialog', 'aria-modal': 'true', 'aria-label': this.mode === 'video' ? t('videoCall') : t('audioCall'), 'data-mode': this.mode },
       this.remote, this.local,
-      h('div', { class: 'call-info' }, avatar(person, 104), h('b', { class: 'call-name' }, person.name), this.status),
+      h('div', { class: 'call-info' }, avatar(person, 104), h('b', { class: 'call-name' }, person.name), this.status, this.errorMessage, this.retryBtn),
       this.controls, this.answer, this.audioBox);
     document.body.append(this.root);
     requestAnimationFrame(() => this.root.classList.add('open'));
@@ -106,10 +138,16 @@ class CallScreen {
   }
 
   async #connect() {
+    if (this.closed || this.connecting) return;
+    this.connecting = true;
+    this.retryBtn.hidden = true;
+    this.errorMessage.hidden = true;
+    this.#setState('connecting');
     try {
-      const [sdk, access] = await Promise.all([loadLiveKit(), callApi('token', { id: this.call.id, name: auth.name })]);
+      const roomName = `mw-conversation-${this.mode === 'video' ? 'video' : 'audio'}-${this.call.id}`;
+      const [sdk, access] = await Promise.all([loadLiveKit(), callAccessToken(roomName, this.call.id, auth.name)]);
       if (this.closed) return;
-      if (!access?.token || !/^wss?:/i.test(access?.serverUrl || '')) throw new Error(t('callFailed'));
+      if (!validLiveKitAccess(access)) throw new Error('The call service returned an invalid token or server URL.');
       const { Room, RoomEvent, Track } = sdk;
       const room = this.room = new Room({
         adaptiveStream: true, dynacast: true,
@@ -123,19 +161,19 @@ class CallScreen {
         .on(RoomEvent.ParticipantDisconnected, () => { if (this.connectedAt && !room.remoteParticipants.size) this.hangUp('ended'); })
         .on(RoomEvent.Reconnecting, () => this.#setState('reconnecting'))
         .on(RoomEvent.Reconnected, () => this.#setState(room.remoteParticipants.size ? 'connected' : 'ringing'))
-        .on(RoomEvent.Disconnected, () => { if (!this.closed) this.finish('ended'); })
+        .on(RoomEvent.Disconnected, () => { if (!this.closed && this.roomConnected) this.finish('ended'); })
         .on(RoomEvent.LocalTrackPublished, publication => {
           if (publication.track?.kind === 'video') { this.local.replaceChildren(publication.track.attach()); }
         });
       try { await room.connect(access.serverUrl, access.token, { autoSubscribe: true }); }
       catch (error) {
-        // "invalid API key": the token was signed with a key this LiveKit project does not know. Ask the Supabase
-        // livekit-token function (it signs with the project's own secrets) and connect once more.
+        // A gateway can return a token signed for a different LiveKit project; try the configured Supabase issuer.
         if (this.closed || !/api key|signal connection|unauthori[sz]ed|\b401\b/i.test(String(error?.message || ''))) throw error;
-        const retry = await directCallToken(`mw-conversation-${this.mode === 'video' ? 'video' : 'audio'}-${this.call.id}`, auth.name);
+        const retry = await directCallToken(roomName, auth.name);
         if (this.closed) return;
         await room.connect(retry.serverUrl, retry.token, { autoSubscribe: true });
       }
+      this.roomConnected = true;
       if (this.closed) { room.disconnect(); return; }
       try {
         await room.localParticipant.setMicrophoneEnabled(true);
@@ -146,10 +184,24 @@ class CallScreen {
     } catch (error) {
       if (this.closed) return;
       console.warn('[call] connect failed', error);
-      // LiveKit's own wording ("could not establish signal connection: invalid API key") means nothing to people.
       const raw = String(error?.message || '');
-      toast(/signal|api key|websocket|token/i.test(raw) ? t('callServiceError') : raw ? `${t('callFailed')}: ${raw}` : t('callFailed'));
-      this.hangUp('disconnected');
+      const limited = error?.status === 429 || /\bquota\b|resource_exhausted|rate.?limit|usage limit/i.test(raw);
+      const serviceFailure = error?.status >= 500 || error?.name === 'TimeoutError'
+        || /signal|api key|websocket|token|livekit|service unavailable|unreachable|network|failed to fetch|load failed|timeout|timed? ?out|aborted/i.test(raw);
+      const message = limited ? t('callServiceLimited')
+        : serviceFailure ? `${t('callServiceError')}${raw ? ` ${raw}` : ''}`
+          : raw ? `${t('callFailed')}: ${raw}` : t('callFailed');
+      this.#setState('failed');
+      this.errorMessage.textContent = message;
+      this.errorMessage.hidden = false;
+      this.retryBtn.hidden = false;
+      toast(message);
+      const room = this.room;
+      this.room = null;
+      this.roomConnected = false;
+      try { room?.removeAllListeners?.(); room?.disconnect(); } catch {}
+    } finally {
+      this.connecting = false;
     }
   }
 
