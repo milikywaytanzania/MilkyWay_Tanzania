@@ -264,7 +264,7 @@ test('LIVE room member updated_at is selected, repaired, and reloaded into Postg
 });
 
 test('LIVE room UPSERT targets have unique indexes after duplicate rows are reconciled', () => {
-  const migration = readFileSync(new URL('../supabase/migrations/20261125_milkyway_live_upsert_keys.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../supabase/migrations/20261117_milkyway_live_upsert_keys.sql', import.meta.url), 'utf8');
   const api = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
   assert.match(api, /mw_live_room_members\?on_conflict=room_name,user_id/);
   assert.match(api, /mw_live_room_settings\?on_conflict=room_name/);
