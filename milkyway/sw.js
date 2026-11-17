@@ -1,13 +1,13 @@
 // MilkyWay service worker.
 // Precaches the new app shell (index.html + app/ modules) so startup never waits for the network; the feed itself
 // comes from IndexedDB (app/core/store.js). Other assets are cached on first use by the shared stale-while-revalidate rule.
-const CACHE='milkyway-v226-media-performance';
+const CACHE='milkyway-v227-explore-discovery';
 const SHELL=['./','./index.html','./manifest.json','./favicon.ico','./icon-192.png','./icon-512.png','./brand/favicon-32.png','./splash.css?v=1','./splash.js?v=1','./brand/milkyway-splash.webp','./brand/milkyway-watermark-galaxy.webp',
-  './app/app.css?v=19','./app/main.js','./app/config.js',
+  './app/app.css?v=20','./app/main.js','./app/config.js',
   './app/core/events.js','./app/core/sdk.js','./app/core/net.js','./app/core/store.js','./app/core/sync.js','./app/core/device.js','./app/core/media.js','./app/core/media-image.js','./app/core/media-worker.js','./app/core/media-optimizer.js','./app/core/i18n.js','./app/core/locales.js',
   './app/data/feed.js','./app/data/profiles.js','./app/data/comments.js','./app/data/live.js','./app/data/gifts.js','./app/data/chats.js','./app/data/messages.js','./app/data/presence.js','./app/data/promoted.js','./app/data/post-notifications.js',
   './app/ui/dom.js','./app/ui/pager.js','./app/ui/playback.js','./app/ui/feed-view.js','./app/ui/sheet.js','./app/ui/live-view.js','./app/ui/live-session.js','./app/ui/live-controls.js',
-  './app/ui/comments-sheet.js','./app/ui/gift-tray.js','./app/ui/inbox-view.js','./app/ui/auth-sheet.js','./app/ui/profile-view.js','./app/ui/profile-search.js','./app/ui/post-viewer.js','./app/ui/compose-sheet.js','./app/ui/call-view.js','./app/ui/settings-view.js','./app/ui/studio-view.js','./app/ui/admin-view.js','./app/ui/wallet-onboarding.js','./app/ui/share-sheet.js',
+  './app/ui/comments-sheet.js','./app/ui/gift-tray.js','./app/ui/inbox-view.js','./app/ui/auth-sheet.js','./app/ui/profile-view.js','./app/ui/profile-search.js','./app/ui/discovery-view.js','./app/ui/post-viewer.js','./app/ui/compose-sheet.js','./app/ui/call-view.js','./app/ui/settings-view.js','./app/ui/studio-view.js','./app/ui/admin-view.js','./app/ui/wallet-onboarding.js','./app/ui/share-sheet.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'];
 // The test harness loads this file without importScripts, so caching is skipped there.
 if (typeof importScripts === 'function') importScripts('/sw-cache.js');
@@ -15,7 +15,7 @@ if (self.MWCache) self.MWCache.install({
   prefix: 'milkyway-',
   version: CACHE.replace(/^milkyway-/, ''),
   precache: SHELL,
-  required: ['./', './index.html', './app/app.css?v=19', './app/main.js', './app/core/store.js', './app/ui/feed-view.js'],
+  required: ['./', './index.html', './app/app.css?v=20', './app/main.js', './app/core/store.js', './app/ui/feed-view.js', './app/ui/discovery-view.js'],
   offlinePage: './index.html',
 });
 // Background Sync (where supported) wakes the worker once the network returns; open MilkyWay windows then refresh quietly.

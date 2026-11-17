@@ -56,8 +56,9 @@ function openPost(post) {
   postViewer().then(viewer => {
     // A copy: the popup keeps its own counts; likes still go through the shared feed actions.
     viewer.open([{ ...post, _counted: true }], 0, { own: false, onClose: () => { if (shell.dataset.view === 'home') playback.suspend(false); } });
-  }).catch(() => { playback.suspend(false); toast(t('imageUnavailable')); });
+  }).catch(() => { playback.suspend(shell.dataset.view !== 'home'); toast(t('imageUnavailable')); });
 }
+const discoveryView = lazy(() => import('./ui/discovery-view.js').then(m => new m.DiscoveryView($('exploreView'), { openProfile, openPost })));
 const liveView = lazy(() => import('./ui/live-view.js').then(m => new m.LiveView($('liveView'), {
   requireLogin, openProfile, onClose: () => showHome(),
   openGifts: target => giftTray().then(tray => tray.open(target)),
@@ -102,6 +103,8 @@ function setNav(name) {
 }
 function showHome() {
   if (liveView.loaded()) liveView().then(view => view.close());
+  $('liveView').hidden = true;
+  $('exploreView').hidden = true;
   $('feedView').hidden = false;
   playback.suspend(false);
   setNav('home');
@@ -111,9 +114,24 @@ function showHome() {
 function showLive(room = null) {
   playback.suspend(true);
   $('feedView').hidden = true;
+  $('exploreView').hidden = true;
+  $('liveView').hidden = false;
   setNav('live');
   if (!location.hash.startsWith('#live')) history.pushState({ live: true }, '', room ? `#live=${encodeURIComponent(room)}` : '#live');
   liveView().then(view => view.open(room));
+}
+function showExplore() {
+  if (liveView.loaded()) liveView().then(view => view.close());
+  if (location.hash.startsWith('#live')) history.replaceState(null, '', location.pathname + location.search);
+  $('feedView').hidden = true;
+  $('liveView').hidden = true;
+  $('exploreView').hidden = false;
+  playback.suspend(true);
+  setNav('explore');
+  discoveryView().then(view => view.open()).catch(error => {
+    console.error('[explore] discovery view could not be opened', error);
+    toast(t('exploreLoadFailed'));
+  });
 }
 
 function route() {
@@ -135,7 +153,7 @@ document.addEventListener('click', event => {
   if (target.id === 'profileSearch') { profileSearch().then(view => view.open()); return; }
   const nav = target.dataset.nav;
   if (nav === 'home') { if (shell.dataset.view === 'home') feedView.reload(); else showHome(); }
-  else if (nav === 'live') showLive();
+  else if (nav === 'explore') showExplore();
   else if (nav === 'create') openCreate();
   else if (nav === 'inbox') { if (requireLogin()) inboxView().then(view => view.open()); }
   else if (nav === 'me') openProfile();

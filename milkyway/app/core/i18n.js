@@ -4,7 +4,11 @@ import { extraLocales } from './locales.js';
 const strings = {
   en: {
     requestTimeout: 'The connection is slow. Check your network and try again.', callServiceError: 'Could not connect to the call service. Try again in a moment.', savedPosts: 'Saved posts', noSaved: 'No saved posts yet', unsave: 'Remove',
-    forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Lives',
+    forYou: 'For You', following: 'Following', live: 'LIVE', home: 'Orbit', create: 'Create', inbox: 'Messages', me: 'Nova', explore: 'Explore',
+    exploreSearch: 'Search people, posts, #hashtags, sounds', exploreAll: 'All', explorePeople: 'People', exploreTags: 'Hashtags', exploreSounds: 'Sounds',
+    exploreTrending: 'Trending hashtags', exploreNew: 'New posts', exploreResults: 'Posts', explorePeopleHint: 'Search people by name or @username',
+    exploreLoadFailed: 'Could not load discovery content. Check your connection and retry.', exploreNoSounds: 'No sounds found in recent posts',
+    explorePlaySound: 'Play original sound', exploreOriginalSound: 'Original sound', explorePost: 'Open post',
     tapForSound: 'Tap for sound', offline: 'Offline · showing saved posts', backOnline: 'Back online', empty: 'Nothing here yet',
     emptyFollowing: 'Follow creators to fill this feed', feedLoadFailed: 'Could not load posts. Check your connection and try again.', retry: 'Retry', loading: 'Loading…', comments: 'Comments',
     addComment: 'Add a comment…', send: 'Send', signIn: 'Sign in', signInToContinue: 'Sign in to continue', email: 'Email',
@@ -124,7 +128,11 @@ const strings = {
   },
   sw: {
     requestTimeout: 'Mtandao uko polepole. Angalia muunganisho wako na ujaribu tena.', callServiceError: 'Imeshindikana kuunganisha huduma ya simu. Jaribu tena baada ya muda mfupi.', savedPosts: 'Post zilizohifadhiwa', noSaved: 'Bado hujahifadhi post yoyote', unsave: 'Ondoa',
-    forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Live',
+    forYou: 'Kwa Ajili Yako', following: 'Unaowafuata', live: 'LIVE', home: 'Orbit', create: 'Tengeneza', inbox: 'Ujumbe', me: 'Nova', explore: 'Gundua',
+    exploreSearch: 'Tafuta watu, machapisho, #hashtag na sauti', exploreAll: 'Zote', explorePeople: 'Watu', exploreTags: 'Hashtag', exploreSounds: 'Sauti',
+    exploreTrending: 'Hashtag zinazovuma', exploreNew: 'Machapisho mapya', exploreResults: 'Machapisho', explorePeopleHint: 'Tafuta watu kwa jina au @jina_la_mtumiaji',
+    exploreLoadFailed: 'Maudhui ya ugunduzi hayakupatikana. Angalia mtandao kisha ujaribu tena.', exploreNoSounds: 'Hakuna sauti kwenye machapisho ya hivi karibuni',
+    explorePlaySound: 'Cheza sauti asilia', exploreOriginalSound: 'Sauti asilia', explorePost: 'Fungua chapisho',
     tapForSound: 'Gusa kupata sauti', offline: 'Nje ya mtandao · machapisho yaliyohifadhiwa', backOnline: 'Umerudi mtandaoni', empty: 'Bado hakuna kitu',
     emptyFollowing: 'Fuata watu ili kujaza ukurasa huu', feedLoadFailed: 'Machapisho hayakupakia. Angalia mtandao ujaribu tena.', retry: 'Jaribu tena', loading: 'Inapakia…', comments: 'Maoni',
     addComment: 'Andika maoni…', send: 'Tuma', signIn: 'Ingia', signInToContinue: 'Ingia kuendelea', email: 'Barua pepe',

@@ -393,7 +393,7 @@ export class NovaMenu {
       setTitle: title => { this.sheet.title = title; },
       onBack: () => this.#home(),
       onWallet: () => this.#wallet(),
-      onGoLive: () => { this.sheet.close(); document.querySelector('[data-nav="live"]')?.click(); },
+      onGoLive: () => { this.sheet.close(); document.querySelector('#liveEntry')?.click(); },
       onCreatePost: () => { this.sheet.close(); this.hooks.openStudioPost?.(); },
       onOpenPost: post => { this.sheet.close(); this.hooks.openStudioPost?.(post); },
     });

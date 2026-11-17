@@ -351,6 +351,28 @@ test('app shell has no render-blocking scripts and loads the core as a module', 
   assert.doesNotMatch(html, /supabase-js|livekit-client/, 'SDKs load lazily, never from the shell');
 });
 
+test('bottom navigation opens Explore discovery and keeps LIVE reachable outside the nav', () => {
+  const html = readFileSync(new URL('../milkyway/index.html', import.meta.url), 'utf8');
+  const navigation = html.match(/<nav class="bottombar"[\s\S]*?<\/nav>/)?.[0] || '';
+  assert.match(navigation, /data-nav="home"[\s\S]*data-nav="explore"/);
+  assert.doesNotMatch(navigation, /data-nav="live"/);
+  assert.match(navigation, /data-nav="explore"[\s\S]*data-i18n="explore">Explore/);
+  assert.match(html, /id="exploreView"/);
+
+  const main = readFileSync(new URL('../milkyway/app/main.js', import.meta.url), 'utf8');
+  const discovery = readFileSync(new URL('../milkyway/app/ui/discovery-view.js', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../milkyway/app/ui/settings-view.js', import.meta.url), 'utf8');
+  const serviceWorker = readFileSync(new URL('../milkyway/sw.js', import.meta.url), 'utf8');
+  assert.match(main, /else if \(nav === 'explore'\) showExplore\(\)/);
+  assert.match(main, /function showExplore\(\)[\s\S]*discoveryView\(\)\.then/);
+  assert.match(discovery, /searchPeople\(query\)/);
+  assert.match(discovery, /HASHTAG/);
+  assert.match(discovery, /post\.media\?\.audioUrl/);
+  assert.match(discovery, /action: 'page'/);
+  assert.match(settings, /querySelector\('#liveEntry'\)/);
+  assert.match(serviceWorker, /app\/ui\/discovery-view\.js/);
+});
+
 test('homepage APK download is a native static-file link', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /id="appDownload" href="\/MilkyWay\.apk" download="MilkyWay\.apk"/);
