@@ -6,6 +6,7 @@ import feed from '../api/milkyway-feed.js';
 import liveRoom from '../api/milkyway-live-room.js';
 import livekitToken from '../api/milkyway-livekit-token.js';
 import { postShareResponse } from '../api/_lib/post-share.js';
+import { assertRoomAccess } from '../milkyway/app/core/livekit-access.js';
 
 const A = '11111111-1111-4111-8111-111111111111'; // public author
 const B = '22222222-2222-4222-8222-222222222222'; // private author
@@ -262,7 +263,7 @@ test('DM call connection validates token endpoints and offers an in-call retry o
   assert.match(liveKit, /url\.pathname === '\/'.*!url\.username/);
   assert.match(callView, /callAccessToken\(roomName, this\.call\.id, auth\.name\)/);
   assert.match(callView, /directCallToken\(roomName, auth\.name\)/);
-  assert.match(callView, /validLiveKitAccess/);
+  assert.match(callView, /assertRoomAccess/);
   assert.match(callView, /isUsageLimitError/);
   assert.match(callView, /LiveKit usage limit reached/);
   assert.match(callView, /if \(isUsageLimitError\(error\)\) throw error/);
@@ -271,6 +272,31 @@ test('DM call connection validates token endpoints and offers an in-call retry o
   assert.match(callView, /callServiceLimited/);
   assert.match(liveKit, /management API usage limit reached/);
   assert.match(translations, /callServiceLimited:/);
+});
+
+test('LiveKit access tokens are pinned to the expected room and server across fallbacks', () => {
+  const claims = Buffer.from(JSON.stringify({ video: { room: 'mw-video-live-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', roomJoin: true } })).toString('base64url');
+  const access = {
+    token: `header.${claims}.signature`,
+    roomName: 'mw-video-live-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    serverUrl: 'wss://live.example.test',
+  };
+  assert.equal(assertRoomAccess(access, access.roomName, 'wss://live.example.test/'), access);
+  assert.throws(() => assertRoomAccess(access, 'mw-video-live-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'), /different room/);
+  assert.throws(() => assertRoomAccess(access, access.roomName, 'wss://other.example.test'), /different server/);
+});
+
+test('LIVE and DM calls keep LiveKit default ICE and retry only in their assigned room', () => {
+  const liveSession = readFileSync(new URL('../milkyway/app/ui/live-session.js', import.meta.url), 'utf8');
+  const callView = readFileSync(new URL('../milkyway/app/ui/call-view.js', import.meta.url), 'utf8');
+  assert.match(liveSession, /assertRoomAccess\(payload, live\.room\)/);
+  assert.match(liveSession, /assertRoomAccess\(fresh, this\.live\.room, token\.serverUrl\)/);
+  assert.match(liveSession, /\.on\(RoomEvent\.Reconnecting/);
+  assert.match(liveSession, /async reconnect\(\)/);
+  assert.match(callView, /assertRoomAccess\(retry, roomName, access\.serverUrl\)/);
+  assert.match(callView, /RoomEvent\.Reconnecting/);
+  assert.match(callView, /this\.#showConnectionError\(new Error\(`LiveKit disconnected/);
+  assert.doesNotMatch(liveSession + callView, /iceServers\s*:/);
 });
 
 test('LIVE guest stage grants publisher permissions and renders allocated guest seats', () => {

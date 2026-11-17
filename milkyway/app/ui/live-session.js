@@ -29,6 +29,7 @@ import { config } from '../config.js';
 import { t } from '../core/i18n.js';
 import { api, auth, supabase, isNetworkError, accessToken } from '../core/net.js';
 import { loadLiveKit } from '../core/sdk.js';
+import { assertRoomAccess } from '../core/livekit-access.js';
 import { device } from '../core/device.js';
 import { sendGift } from '../data/gifts.js';
 
@@ -88,8 +89,7 @@ async function requestToken(live, host, { direct = false, stage = false } = {}) 
       try { payload = await directToken(body); } catch { throw error; }
     }
   }
-  if (!payload?.token || !payload?.serverUrl || !/^wss:/i.test(payload.serverUrl)) throw new Error('Invalid LIVE token.');
-  return payload;
+  return assertRoomAccess(payload, live.room);
 }
 
 async function fetchToken(live, host, options = {}) {
@@ -180,6 +180,7 @@ export class LiveSession extends Emitter {
     if (this.closed) return;
     const { Room, RoomEvent, Track } = sdk;
     const mobileStart = device.lowEnd || device.slowNetwork || innerWidth <= 760;
+    // LiveKit's SFU supplies the ICE/TURN configuration; leave ICE servers and SDK reconnection policy to the SDK.
     const room = new Room({
       adaptiveStream: true,
       dynacast: true,
@@ -251,6 +252,7 @@ export class LiveSession extends Emitter {
       if (isKeyRejection(error)) { try { fresh = await fetchToken(this.live, this.host, { direct: true, stage }); } catch {} }
       fresh ||= await fetchToken(this.live, this.host, { stage });
       if (this.closed) return;
+      assertRoomAccess(fresh, this.live.room, token.serverUrl);
       await room.connect(fresh.serverUrl, fresh.token, { autoSubscribe: true });
     }
     if (this.closed) { room.disconnect(); return; }

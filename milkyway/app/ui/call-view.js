@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { api, auth, supabase, accessToken } from '../core/net.js';
 import { bus } from '../core/events.js';
 import { loadLiveKit } from '../core/sdk.js';
+import { assertRoomAccess } from '../core/livekit-access.js';
 import { t } from '../core/i18n.js';
 import { profiles } from '../data/profiles.js';
 import { h, icon, avatar, toast } from './dom.js';
@@ -23,21 +24,14 @@ async function directCallToken(roomName, name) {
     headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || !validLiveKitAccess(data)) {
+  if (!response.ok) {
     throw Object.assign(new Error(data?.error || t('callFailed')), {
       status: response.status,
       code: data?.code || data?.reason,
     });
   }
-  return data;
+  return assertRoomAccess(data, roomName);
 }
-const validLiveKitAccess = access => {
-  if (typeof access?.token !== 'string' || access.token.split('.').length !== 3) return false;
-  try {
-    const url = new URL(access.serverUrl);
-    return ['ws:', 'wss:'].includes(url.protocol) && Boolean(url.hostname);
-  } catch { return false; }
-};
 const callErrorText = error => [
   error?.message, error?.reason, error?.code, error?.cause?.message, error?.cause?.code,
 ].filter(value => value != null).join(' ');
@@ -45,10 +39,11 @@ const isUsageLimitError = error => [402, 429].includes(error?.status)
   || /quota|resource[\s_-]*exhausted|rate.?limit|usage limit|limit reached|too many requests/i.test(callErrorText(error));
 async function callAccessToken(roomName, callId, name) {
   let gatewayError;
+  let gatewayServerUrl = '';
   try {
     const access = await callApi('token', { id: callId, name });
-    if (validLiveKitAccess(access)) return access;
-    gatewayError = new Error('The call service returned an invalid token or server URL.');
+    gatewayServerUrl = access?.serverUrl || '';
+    return assertRoomAccess(access, roomName);
   } catch (error) {
     gatewayError = error;
     if (isUsageLimitError(error)) throw error;
@@ -56,8 +51,7 @@ async function callAccessToken(roomName, callId, name) {
   }
   try {
     const access = await directCallToken(roomName, name);
-    if (validLiveKitAccess(access)) return access;
-    throw new Error('The Supabase call service returned an invalid token or server URL.');
+    return assertRoomAccess(access, roomName, gatewayServerUrl);
   } catch (error) {
     if (error?.message && error.message !== t('callFailed')) throw error;
     throw gatewayError || error;
@@ -158,8 +152,9 @@ class CallScreen {
       const roomName = `mw-conversation-${this.mode === 'video' ? 'video' : 'audio'}-${this.call.id}`;
       const [sdk, access] = await Promise.all([loadLiveKit(), callAccessToken(roomName, this.call.id, auth.name)]);
       if (this.closed) return;
-      if (!validLiveKitAccess(access)) throw new Error('The call service returned an invalid token or server URL.');
+      assertRoomAccess(access, roomName);
       const { Room, RoomEvent, Track } = sdk;
+      // LiveKit negotiates ICE/TURN with its SFU; the SDK manages mobile network reconnection.
       const room = this.room = new Room({
         adaptiveStream: true, dynacast: true,
         videoCaptureDefaults: { resolution: { width: 960, height: 540, frameRate: 24 }, facingMode: 'user' },
@@ -172,7 +167,14 @@ class CallScreen {
         .on(RoomEvent.ParticipantDisconnected, () => { if (this.connectedAt && !room.remoteParticipants.size) this.hangUp('ended'); })
         .on(RoomEvent.Reconnecting, () => this.#setState('reconnecting'))
         .on(RoomEvent.Reconnected, () => this.#setState(room.remoteParticipants.size ? 'connected' : 'ringing'))
-        .on(RoomEvent.Disconnected, () => { if (!this.closed && this.roomConnected) this.finish('ended'); })
+        .on(RoomEvent.Disconnected, reason => {
+          if (this.closed || !this.roomConnected) return;
+          if ([sdk.DisconnectReason?.ROOM_DELETED, sdk.DisconnectReason?.PARTICIPANT_REMOVED].includes(reason)) {
+            this.finish('ended');
+            return;
+          }
+          this.#showConnectionError(new Error(`LiveKit disconnected${reason ? `: ${reason}` : '.'}`));
+        })
         .on(RoomEvent.LocalTrackPublished, publication => {
           if (publication.track?.kind === 'video') { this.local.replaceChildren(publication.track.attach()); }
         });
@@ -182,6 +184,7 @@ class CallScreen {
         if (this.closed || !/api key|signal connection|unauthori[sz]ed|\b401\b/i.test(String(error?.message || ''))) throw error;
         const retry = await directCallToken(roomName, auth.name);
         if (this.closed) return;
+        assertRoomAccess(retry, roomName, access.serverUrl);
         await room.connect(retry.serverUrl, retry.token, { autoSubscribe: true });
       }
       this.roomConnected = true;
@@ -195,28 +198,33 @@ class CallScreen {
     } catch (error) {
       if (this.closed) return;
       console.warn('[call] connect failed', error);
-      const raw = callErrorText(error);
-      const limited = isUsageLimitError(error);
-      if (limited) console.warn('[call] LiveKit usage limit reached', {
-        status: error?.status || null, code: error?.code || null, message: raw,
-      });
-      const serviceFailure = error?.status >= 500 || error?.name === 'TimeoutError'
-        || /signal|api key|websocket|token|livekit|service unavailable|unreachable|network|failed to fetch|load failed|timeout|timed? ?out|aborted/i.test(raw);
-      const message = limited ? t('callServiceLimited')
-        : serviceFailure ? `${t('callServiceError')}${raw ? ` ${raw}` : ''}`
-          : raw ? `${t('callFailed')}: ${raw}` : t('callFailed');
-      this.#setState('failed');
-      this.errorMessage.textContent = message;
-      this.errorMessage.hidden = false;
-      this.retryBtn.hidden = false;
-      toast(message);
-      const room = this.room;
-      this.room = null;
-      this.roomConnected = false;
-      try { room?.removeAllListeners?.(); room?.disconnect(); } catch {}
+      this.#showConnectionError(error);
     } finally {
       this.connecting = false;
     }
+  }
+
+  #showConnectionError(error) {
+    if (this.closed) return;
+    const raw = callErrorText(error);
+    const limited = isUsageLimitError(error);
+    if (limited) console.warn('[call] LiveKit usage limit reached', {
+      status: error?.status || null, code: error?.code || null, message: raw,
+    });
+    const serviceFailure = error?.status >= 500 || error?.name === 'TimeoutError'
+      || /signal|api key|websocket|token|livekit|service unavailable|unreachable|network|failed to fetch|load failed|timeout|timed? ?out|aborted/i.test(raw);
+    const message = limited ? t('callServiceLimited')
+      : serviceFailure ? `${t('callServiceError')}${raw ? ` ${raw}` : ''}`
+        : raw ? `${t('callFailed')}: ${raw}` : t('callFailed');
+    this.#setState('failed');
+    this.errorMessage.textContent = message;
+    this.errorMessage.hidden = false;
+    this.retryBtn.hidden = false;
+    toast(message);
+    const room = this.room;
+    this.room = null;
+    this.roomConnected = false;
+    try { room?.removeAllListeners?.(); room?.disconnect(); } catch {}
   }
 
   #peerJoined() {
