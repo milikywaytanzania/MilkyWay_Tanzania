@@ -263,6 +263,18 @@ test('LIVE room member updated_at is selected, repaired, and reloaded into Postg
   assert.match(api, /mw_live_room_members\?[^`]*select=room_name,user_id,name,avatar,state,host_muted,updated_at&order=updated_at\.desc/);
 });
 
+test('LIVE room UPSERT targets have unique indexes after duplicate rows are reconciled', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261125_milkyway_live_upsert_keys.sql', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../api/milkyway-live-room.js', import.meta.url), 'utf8');
+  assert.match(api, /mw_live_room_members\?on_conflict=room_name,user_id/);
+  assert.match(api, /mw_live_room_settings\?on_conflict=room_name/);
+  assert.match(migration, /partition by room_name, user_id[\s\S]*row_number > 1/);
+  assert.match(migration, /create unique index if not exists mw_live_room_members_room_user_uidx[\s\S]*on public\.mw_live_room_members \(room_name, user_id\)/i);
+  assert.match(migration, /partition by room_name[\s\S]*row_number > 1/);
+  assert.match(migration, /create unique index if not exists mw_live_room_settings_room_name_uidx[\s\S]*on public\.mw_live_room_settings \(room_name\)/i);
+  assert.match(migration, /notify pgrst, 'reload schema'/i);
+});
+
 test('DM call connection validates token endpoints and offers an in-call retry on LiveKit errors', () => {
   const callView = readFileSync(new URL('../milkyway/app/ui/call-view.js', import.meta.url), 'utf8');
   const liveKit = readFileSync(new URL('../api/_lib/livekit.js', import.meta.url), 'utf8');
