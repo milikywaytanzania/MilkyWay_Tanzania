@@ -137,7 +137,23 @@ async function page({ ctx, query }) {
 
 async function sharedPost({ ctx, query }) {
   const id = requireUuid(query.id, 'post id');
-  const rows = await ctx.rest(`mw_posts?id=${eq(id)}&select=${POST_FIELDS}&limit=1`);
+  let rows;
+  const selections = [`title,${POST_FIELDS}`, POST_FIELDS, LEGACY_POST_FIELDS];
+  for (let index = 0; index < selections.length; index++) {
+    try {
+      rows = await ctx.rest(`mw_posts?id=${eq(id)}&select=${selections[index]}&limit=1`);
+      break;
+    } catch (error) {
+      const message = String(error?.message || '');
+      if (!isMissingSchema(error)) throw error;
+      if (index === 0 && /\btitle\b/i.test(message)) continue;
+      if (index < selections.length - 1 && /media_items|media_preview_items|audio_url|slideshow_style/i.test(message)) {
+        index = selections.length - 2;
+        continue;
+      }
+      throw error;
+    }
+  }
   const row = rows?.[0];
   if (!row) return { post: null };
 
@@ -153,6 +169,7 @@ async function sharedPost({ ctx, query }) {
   return {
     post: {
       id,
+      title: typeof row.title === 'string' ? row.title : '',
       author: {
         id: authorId,
         name: profile?.display_name || row.author_name || 'MilkyWay',

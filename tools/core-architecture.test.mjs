@@ -59,7 +59,7 @@ test('feed page returns ready-to-render posts with counts and hides private and 
 
 test('shared-post metadata returns public content and excludes private or audience-restricted posts', async () => {
   const row = {
-    id: P(9), author_id: A, author_name: 'Asha', caption: 'A lovely <post>',
+    id: P(9), author_id: A, author_name: 'Asha', title: 'Post title', caption: 'A lovely <post>',
     media_url: 'https://x/photo.webp', media_type: 'image', media_items: [], media_preview_items: ['https://x/preview.webp'],
     created_at: '2026-11-14T10:00:00Z',
   };
@@ -71,6 +71,7 @@ test('shared-post metadata returns public content and excludes private or audien
   ]);
   const { status, payload } = await call({ action: 'share', id: P(9) });
   assert.equal(status, 200);
+  assert.equal(payload.post.title, 'Post title');
   assert.equal(payload.post.author.name, 'Asha K');
   assert.equal(payload.post.caption, 'A lovely <post>');
   assert.equal(payload.post.media.previewItems[0], 'https://x/preview.webp');
@@ -95,10 +96,39 @@ test('shared-post metadata returns public content and excludes private or audien
   assert.equal(audienceHidden.payload.post, null);
 });
 
-test('post share page emits escaped post-specific Open Graph metadata and redirects into the app', async () => {
+test('shared-post metadata falls back when older schemas lack title and slideshow columns', async () => {
+  const calls = [];
+  globalThis.fetch = async url => {
+    const address = String(url);
+    calls.push(address);
+    if (address.includes('/rest/v1/mw_posts?') && address.includes('select=title,')) {
+      return new Response(JSON.stringify({ message: "Could not find the 'title' column of 'mw_posts' in the schema cache" }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (address.includes('/rest/v1/mw_posts?') && !address.includes('media_preview_items')) {
+      return new Response(JSON.stringify([{
+        id: P(11), author_id: A, caption: 'Legacy caption', media_url: null, media_type: null,
+      }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (address.includes('/rest/v1/mw_posts?')) {
+      return new Response(JSON.stringify({ message: "Could not find the 'media_preview_items' column of 'mw_posts' in the schema cache" }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const { status, payload } = await call({ action: 'share', id: P(11) });
+  assert.equal(status, 200);
+  assert.equal(payload.post.title, '');
+  assert.equal(payload.post.caption, 'Legacy caption');
+  assert.equal(calls.filter(url => url.includes('/rest/v1/mw_posts?')).length, 3);
+});
+
+test('post share page emits escaped post-specific Open Graph metadata and a useful app fallback', async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({
     post: {
-      id: P(10), author: { name: 'Asha & Co' }, caption: 'A <great> view',
+      id: P(10), title: 'A post title', author: { name: 'Asha & Co' }, caption: 'A <great> view',
       media: { type: 'image', url: 'https://x/post.webp', previewItems: [] },
     },
   }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -106,12 +136,17 @@ test('post share page emits escaped post-specific Open Graph metadata and redire
   const body = await response.text();
   assert.equal(response.status, 200);
   assert.match(body, /property="og:image" content="https:\/\/x\/post\.webp"/);
-  assert.match(body, /property="og:title" content="Asha &amp; Co on MilkyWay"/);
+  assert.match(body, /property="og:title" content="A post title"/);
   assert.match(body, /property="og:description" content="A &lt;great&gt; view"/);
   assert.match(body, /http-equiv="refresh" content="0;url=https:\/\/milkyway\.test\/milkyway\/\?post=/);
+  assert.match(body, /<img src="https:\/\/x\/post\.webp"/);
+  assert.match(body, /Open this post in MilkyWay/);
+  assert.match(body, /property="og:url" content="https:\/\/milkyway\.test\/share\//);
 
   const crawler = await postShareResponse(`https://milkyway.test/share/${P(10)}`, P(10), 'WhatsApp');
-  assert.doesNotMatch(await crawler.text(), /http-equiv="refresh"/);
+  const crawlerBody = await crawler.text();
+  assert.doesNotMatch(crawlerBody, /http-equiv="refresh"/);
+  assert.match(crawlerBody, /property="og:image" content="https:\/\/x\/post\.webp"/);
 });
 
 test('feed cursor resumes right after the last returned post', async () => {

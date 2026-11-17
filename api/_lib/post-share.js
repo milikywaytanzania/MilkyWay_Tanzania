@@ -38,13 +38,14 @@ export async function postShareResponse(requestUrl, postId, userAgent = '') {
   const canonical = postUrl(request.origin, id);
   const destination = appUrl(request.origin, id);
   const name = String(post.author?.name || 'MilkyWay').slice(0, 100);
-  const title = `${name} on MilkyWay`;
-  const description = String(post.caption || 'View this post on MilkyWay.').replace(/\s+/g, ' ').trim().slice(0, 300) || 'View this post on MilkyWay.';
+  const caption = String(post.caption || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const title = String(post.title || caption || `${name} on MilkyWay`).replace(/\s+/g, ' ').trim().slice(0, 160);
+  const description = caption || `A post by ${name} on MilkyWay.`;
   const media = post.media;
   const image = publicUrl(media?.previewItems?.[0])
     || (media?.type === 'video'
       ? publicUrl(media.url && /\/storage\/v1\/object\/public\//i.test(media.url) ? `${media.url.split(/[?#]/, 1)[0]}.poster.jpg` : '')
-      : publicUrl(media?.url))
+      : publicUrl(media?.url) || publicUrl(media?.items?.[0]))
     || new URL('/milkyway/brand/milkyway-splash.webp', request.origin).href;
   const video = media?.type === 'video' ? publicUrl(media.url) : '';
   const tags = [
@@ -66,9 +67,15 @@ export async function postShareResponse(requestUrl, postId, userAgent = '') {
     `<meta name="twitter:image" content="${html(image)}">`,
     ...(video ? [`<meta property="og:video" content="${html(video)}">`] : []),
     ...(crawler ? [] : [`<meta http-equiv="refresh" content="0;url=${html(destination)}">`]),
-    '</head><body><p>Opening post… <a href="',
+    '</head><body><main><h1>',
+    html(title),
+    '</h1><p>',
+    html(description),
+    `</p><img src="${html(image)}" alt="${html(title)}" style="max-width:100%;height:auto"><p>Shared by `,
+    html(name),
+    ' on MilkyWay.</p><p><a href="',
     html(destination),
-    '">Continue to MilkyWay</a>.</p></body></html>',
+    '">Open this post in MilkyWay</a></p></main></body></html>',
   ];
   return new Response(tags.join(''), {
     status: 200,
