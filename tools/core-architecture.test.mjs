@@ -263,9 +263,13 @@ test('DM call connection validates token endpoints and offers an in-call retry o
   assert.match(callView, /callAccessToken\(roomName, this\.call\.id, auth\.name\)/);
   assert.match(callView, /directCallToken\(roomName, auth\.name\)/);
   assert.match(callView, /validLiveKitAccess/);
+  assert.match(callView, /isUsageLimitError/);
+  assert.match(callView, /LiveKit usage limit reached/);
+  assert.match(callView, /if \(isUsageLimitError\(error\)\) throw error/);
   assert.match(callView, /this\.retryBtn\.hidden = false/);
   assert.doesNotMatch(callView, /this\.hangUp\('disconnected'\)/);
   assert.match(callView, /callServiceLimited/);
+  assert.match(liveKit, /management API usage limit reached/);
   assert.match(translations, /callServiceLimited:/);
 });
 

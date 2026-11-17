@@ -61,9 +61,19 @@ export async function livekitUsable() {
       method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ names: ['milkyway-credential-check'] }), signal: AbortSignal.timeout(5000),
     });
-    // Only a clear refusal of the credentials disables local signing; an outage is not a key problem.
+    const details = await result.json().catch(() => ({}));
+    // A management API quota is not evidence that the signing credentials are invalid.
     const rejected = result.status === 401 || result.status === 403;
-    credentialCheck = { at: Date.now(), ok: !rejected, reason: rejected ? 'LiveKit rejected LIVEKIT_API_KEY / LIVEKIT_API_SECRET for LIVEKIT_URL.' : '' };
+    const quotaLimited = [402, 429].includes(result.status)
+      || /quota|resource[\s_-]*exhausted|rate.?limit|usage limit/i.test(`${details?.code || ''} ${details?.msg || details?.message || ''}`);
+    const reason = rejected
+      ? 'LiveKit rejected LIVEKIT_API_KEY / LIVEKIT_API_SECRET for LIVEKIT_URL.'
+      : quotaLimited ? 'LiveKit management API reported a usage limit; token signing will continue.'
+        : '';
+    if (quotaLimited) console.warn('[livekit] management API usage limit reached', {
+      status: result.status, code: details?.code || null, message: details?.msg || details?.message || '',
+    });
+    credentialCheck = { at: Date.now(), ok: !rejected, reason };
   } catch {
     credentialCheck = { at: Date.now() - 4 * 60_000, ok: true, reason: 'LiveKit was unreachable during the credential check.' };
   }

@@ -23,7 +23,12 @@ async function directCallToken(roomName, name) {
     headers: { 'Content-Type': 'application/json', apikey: config.supabase.anonKey, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || !validLiveKitAccess(data)) throw new Error(data?.error || t('callFailed'));
+  if (!response.ok || !validLiveKitAccess(data)) {
+    throw Object.assign(new Error(data?.error || t('callFailed')), {
+      status: response.status,
+      code: data?.code || data?.reason,
+    });
+  }
   return data;
 }
 const validLiveKitAccess = access => {
@@ -33,6 +38,11 @@ const validLiveKitAccess = access => {
     return ['ws:', 'wss:'].includes(url.protocol) && Boolean(url.hostname);
   } catch { return false; }
 };
+const callErrorText = error => [
+  error?.message, error?.reason, error?.code, error?.cause?.message, error?.cause?.code,
+].filter(value => value != null).join(' ');
+const isUsageLimitError = error => [402, 429].includes(error?.status)
+  || /quota|resource[\s_-]*exhausted|rate.?limit|usage limit|limit reached|too many requests/i.test(callErrorText(error));
 async function callAccessToken(roomName, callId, name) {
   let gatewayError;
   try {
@@ -41,6 +51,7 @@ async function callAccessToken(roomName, callId, name) {
     gatewayError = new Error('The call service returned an invalid token or server URL.');
   } catch (error) {
     gatewayError = error;
+    if (isUsageLimitError(error)) throw error;
     if ([401, 403, 404, 409].includes(error?.status)) throw error;
   }
   try {
@@ -184,8 +195,11 @@ class CallScreen {
     } catch (error) {
       if (this.closed) return;
       console.warn('[call] connect failed', error);
-      const raw = String(error?.message || '');
-      const limited = error?.status === 429 || /\bquota\b|resource_exhausted|rate.?limit|usage limit/i.test(raw);
+      const raw = callErrorText(error);
+      const limited = isUsageLimitError(error);
+      if (limited) console.warn('[call] LiveKit usage limit reached', {
+        status: error?.status || null, code: error?.code || null, message: raw,
+      });
       const serviceFailure = error?.status >= 500 || error?.name === 'TimeoutError'
         || /signal|api key|websocket|token|livekit|service unavailable|unreachable|network|failed to fetch|load failed|timeout|timed? ?out|aborted/i.test(raw);
       const message = limited ? t('callServiceLimited')
