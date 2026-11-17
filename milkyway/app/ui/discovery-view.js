@@ -3,7 +3,7 @@ import { api } from '../core/net.js';
 import { t } from '../core/i18n.js';
 import { searchPeople } from '../data/messages.js';
 import { profiles } from '../data/profiles.js';
-import { extractVideoThumbnail, poster, setImage } from '../core/media.js';
+import { extractVideoThumbnail, mediaKind, poster, setImage } from '../core/media.js';
 import { h, avatar } from './dom.js';
 
 const TABS = ['all', 'people', 'tags', 'sounds'];
@@ -182,7 +182,7 @@ export class DiscoveryView {
     }
     this.results.append(h('div', { class: 'explore-grid' }, ...posts.map(post => {
       const media = post.media;
-      const isVideo = media?.type === 'video';
+      const isVideo = mediaKind(post) === 'video';
       const sources = isVideo
         ? [media?.previewItems?.[0], poster(media.url, 480)].filter((source, index, list) => source && list.indexOf(source) === index)
         : [media?.previewItems?.[0] || media?.url || media?.items?.[0]].filter(Boolean);

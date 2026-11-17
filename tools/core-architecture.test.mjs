@@ -390,11 +390,13 @@ test('Explore video tiles fall back to extracted frames and retain a dark creato
   const styles = readFileSync(new URL('../milkyway/app/app.css', import.meta.url), 'utf8');
   assert.match(discovery, /extractVideoThumbnail\(media\.url\)/);
   assert.match(discovery, /media\?\.previewItems\?\.\[0\]/);
+  assert.match(discovery, /mediaKind\(post\) === 'video'/);
   assert.match(discovery, /class:\s*'explore-post-author'/);
   assert.match(media, /video\.crossOrigin = 'anonymous'/);
   assert.match(media, /context\.drawImage\(video/);
   assert.match(media, /canvas\.toDataURL\('image\/jpeg'/);
   assert.match(styles, /\.explore-post\.is-video-fallback/);
+  assert.match(styles, /\.explore-post\.is-video::after/);
   assert.match(styles, /\.explore-post-author/);
 });
 
